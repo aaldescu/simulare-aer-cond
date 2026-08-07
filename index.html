@@ -63,6 +63,9 @@
       <div class="legend">
         <span>Cald</span><div class="grad"></div><span>Rece</span>
       </div>
+      <div id="tlwrap" style="display:none;margin-top:8px">
+        <canvas id="tl" width="720" height="72"></canvas>
+      </div>
     </div>
 
     <div class="side">
@@ -176,7 +179,7 @@ function paint(x,y){
     document.getElementById('msg').textContent='Unitatea de AC se montează pe perete — pune-o pe o celulă lipită de un perete.';
     return;
   }
-  stopRun(false); temp=null; interiorDraw=null;
+  stopRun(false); temp=null; interiorDraw=null; showTimeline(false);
   grid[idx(x,y)]=v; draw();
 }
 function down(ev){ev.preventDefault();drawing=true;const[c,r]=cellFromEvent(ev);paint(c,r);}
@@ -520,6 +523,58 @@ let snapT=null,snapTime=0;
 
 function countAC(){let n=0;for(let i=0;i<grid.length;i++)if(grid[i]===AC)n++;return n;}
 
+// ---------- axa timpului (progresul simularii + curba acoperirii) ----------
+const TL=document.getElementById('tl'),tctx=TL.getContext('2d');
+let hist=[];
+function showTimeline(on){document.getElementById('tlwrap').style.display=on?'block':'none';}
+function drawTimeline(done){
+  const w=TL.width,h=TL.height,L=30,R=w-12,axY=h-18;
+  tctx.clearRect(0,0,w,h);
+  const X=t=>L+(R-L)*Math.min(1,t/SIM_MAX);
+  const Y=c=>axY-3-(axY-21)*(c/100);
+  // repere orizontale 50% / 100%
+  tctx.strokeStyle='rgba(15,23,42,.08)';tctx.lineWidth=1;
+  for(const c of[50,100]){tctx.beginPath();tctx.moveTo(L,Y(c));tctx.lineTo(R,Y(c));tctx.stroke();}
+  // axa timpului
+  tctx.strokeStyle='#94a3b8';
+  tctx.beginPath();tctx.moveTo(L,axY);tctx.lineTo(R,axY);tctx.stroke();
+  tctx.fillStyle='#64748b';tctx.font='10px sans-serif';tctx.textAlign='center';
+  for(let m=0;m<=SIM_MAX/60;m+=15){
+    const x=X(m*60);
+    tctx.beginPath();tctx.moveTo(x,axY);tctx.lineTo(x,axY+4);tctx.stroke();
+    tctx.fillText(m+"'",x,axY+13);
+  }
+  tctx.textAlign='left';
+  tctx.fillText('timp simulat →',L,10);
+  tctx.textAlign='right';
+  tctx.fillText('acoperire confort %',R,10);
+  // curba acoperirii
+  if(hist.length>1){
+    tctx.strokeStyle='#0284c7';tctx.lineWidth=1.6;tctx.beginPath();
+    for(let i=0;i<hist.length;i++){
+      const x=X(hist[i].t),y=Y(hist[i].cov);
+      i?tctx.lineTo(x,y):tctx.moveTo(x,y);
+    }
+    tctx.stroke();
+  }
+  if(hist.length){
+    const p=hist[hist.length-1],x=X(p.t);
+    // cursorul de timp
+    tctx.strokeStyle=done?'#16a34a':'#f59e0b';tctx.lineWidth=1.2;
+    tctx.beginPath();tctx.moveTo(x,14);tctx.lineTo(x,axY);tctx.stroke();
+    tctx.fillStyle='#0284c7';
+    tctx.beginPath();tctx.arc(x,Y(p.cov),2.6,0,7);tctx.fill();
+    const mm=Math.floor(p.t/60),ss=Math.round(p.t%60);
+    const label=done
+      ?`echilibru la min ${mm} — ${p.cov.toFixed(0)}%`
+      :`min ${mm}:${String(ss).padStart(2,'0')} — ${p.cov.toFixed(0)}%`;
+    tctx.fillStyle='#0f172a';
+    const right=x>R-130;
+    tctx.textAlign=right?'right':'left';
+    tctx.fillText(label,x+(right?-6:6),20);
+  }
+}
+
 function startRun(){
   if(!countAC()){document.getElementById('msg').textContent='Alege „Unitate AC” și pune-o pe un perete.';return;}
   stopRun(false);
@@ -528,6 +583,7 @@ function startRun(){
   temp=new Float32Array(grid.length); interiorDraw=new Uint8Array(grid.length);
   colorSet=P.setT; colorAmb=P.outT;
   snapT=new Float32Array(sim.T); snapTime=0;
+  hist=[]; showTimeline(true); drawTimeline(false);
   document.getElementById('run').textContent='■ Oprește simularea';
   animId=requestAnimationFrame(loop);
 }
@@ -537,6 +593,7 @@ function loop(){
   sim.toDraw(temp,interiorDraw); draw();
   const cov=sim.coverage(P.setT+P.thr);
   setCov(Math.round(cov*100));
+  hist.push({t:simTime,cov:cov*100}); drawTimeline(false);
   document.getElementById('hot').textContent=sim.hottest().toFixed(1)+' °C';
   const mm=Math.floor(simTime/60),ss=Math.round(simTime%60);
   document.getElementById('msg').textContent=
@@ -554,6 +611,7 @@ function loop(){
 function finishRun(){
   running=false;animId=0;
   document.getElementById('run').textContent='▶ Rulează simularea';
+  drawTimeline(true);
   finalStats();
 }
 function stopRun(finalize=true){
@@ -561,7 +619,7 @@ function stopRun(finalize=true){
   if(running){
     running=false;
     document.getElementById('run').textContent='▶ Rulează simularea';
-    if(finalize&&sim)finalStats();
+    if(finalize&&sim){drawTimeline(true);finalStats();}
   }
 }
 function setCov(pct){
@@ -900,14 +958,14 @@ function demo(){
   grid[idx(30,4)]=WIN;grid[idx(31,4)]=WIN;
   // AC in living, montat pe peretele din dreapta
   grid[idx(42,8)]=AC;
-  temp=null;interiorDraw=null;draw();
+  temp=null;interiorDraw=null;showTimeline(false);draw();
   document.getElementById('msg').textContent='Exemplu încărcat: 2 dormitoare + living. Apasă „Rulează”.';
 }
 
 document.getElementById('run').onclick=()=>{running?stopRun(true):startRun();};
 document.getElementById('auto').onclick=autoPlace;
 document.getElementById('clear').onclick=()=>{stopRun(false);grid=new Uint8Array(COLS*ROWS);
-  temp=null;interiorDraw=null;draw();
+  temp=null;interiorDraw=null;showTimeline(false);draw();
   document.getElementById('cov').textContent='–';document.getElementById('msg').textContent='Plan gol.';};
 document.getElementById('demo').onclick=demo;
 const th=document.getElementById('th');
