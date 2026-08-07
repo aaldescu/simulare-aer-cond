@@ -278,7 +278,8 @@ function paint(x,y){
     return;
   }
   stopRun(false); temp=null; interiorDraw=null; showTimeline(false);
-  setTempBtn(false); syncControls();
+  setTempBtn(false); syncControls(); leakHighlight=false;
+  document.getElementById('msg').classList.remove('warn');
   grid[idx(x,y)]=v; draw();
 }
 // mutarea POZEI: unealta „✋ Mută poza” (buton stang) sau butonul drept/mijloc
@@ -700,30 +701,50 @@ tempBtn.onclick=()=>{
 
 function countAC(){let n=0;for(let i=0;i<grid.length;i++)if(grid[i]===AC)n++;return n;}
 
-// verifica daca zona de racire e inchisa ermetic: exteriorul (flood din marginile
-// planului, oprit doar de pereti si geamuri — la fel ca in solver) NU trebuie sa
-// ajunga la aerul din jurul unei unitati AC. Daca ajunge, aerul rece se pierde afara.
-function enclosureOK(){
+// exteriorul: flood din marginile planului, oprit doar de pereti si geamuri
+// (exact ca in solver). Tot ce atinge = comunica cu afara.
+function floodOut(){
   const N=COLS*ROWS, out=new Uint8Array(N), st=[];
-  const blocked=i=>grid[i]===WALL||grid[i]===WIN;
   const push=(x,y)=>{if(x<0||y<0||x>=COLS||y>=ROWS)return;const j=idx(x,y);
-    if(!out[j]&&!blocked(j)){out[j]=1;st.push(j);}};
+    if(!out[j]&&grid[j]!==WALL&&grid[j]!==WIN){out[j]=1;st.push(j);}};
   for(let x=0;x<COLS;x++){push(x,0);push(x,ROWS-1);}
   for(let y=0;y<ROWS;y++){push(0,y);push(COLS-1,y);}
   while(st.length){const i=st.pop(),x=i%COLS,y=(i/COLS|0);push(x+1,y);push(x-1,y);push(x,y+1);push(x,y-1);}
-  // trebuie sa existe o zona interioara (celule ne-solide neatinse de flood)
-  let interior=0; for(let i=0;i<N;i++) if(!blocked(i)&&!out[i]) interior++;
-  if(interior<4) return false;
-  // fiecare unitate AC trebuie sa aiba cel putin o celula de aer interioara langa ea
-  for(let i=0;i<N;i++) if(grid[i]===AC){
+  return out;
+}
+// exista o zona interioara etansa (celule de aer neatinse de exterior)?
+function hasSealedInterior(){
+  const out=floodOut();let interior=0;
+  for(let i=0;i<out.length;i++){const g=grid[i];if(g!==WALL&&g!==WIN&&!out[i])interior++;}
+  return interior>=4;
+}
+// zona de racire e inchisa ermetic si fiecare AC are aer interior langa el?
+function enclosureOK(){
+  if(!hasSealedInterior())return false;
+  const out=floodOut();
+  for(let i=0;i<grid.length;i++) if(grid[i]===AC){
     const x=i%COLS,y=(i/COLS|0); let interiorNb=false;
     for(const[nx,ny]of[[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
       if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;const j=idx(nx,ny);
-      if(!blocked(j)&&!out[j]){interiorNb=true;break;}
+      if(grid[j]!==WALL&&grid[j]!==WIN&&!out[j]){interiorNb=true;break;}
     }
     if(!interiorNb) return false;
   }
   return true;
+}
+// aerul din exterior ajuns in interiorul gabaritului planului = scurgerea de evidentiat
+function leakCells(){
+  const out=floodOut();
+  let minX=COLS,minY=ROWS,maxX=-1,maxY=-1;
+  for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++) if(grid[idx(x,y)]!==EMPTY){
+    if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;
+  }
+  const res=[]; if(maxX<0)return res;
+  for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++){
+    const i=idx(x,y),g=grid[i];
+    if(g!==WALL&&g!==WIN&&out[i])res.push(i);
+  }
+  return res;
 }
 
 // ---------- axa timpului (progresul simularii + curba acoperirii) ----------
@@ -783,10 +804,11 @@ function startRun(){
   if(!countAC()){msgEl.classList.remove('warn');msgEl.textContent='Alege „Unitate AC” și pune-o pe un perete.';return;}
   if(!enclosureOK()){
     msgEl.classList.add('warn');
-    msgEl.textContent='⚠ Spațiul nu e închis ermetic — aerul rece se pierde în exterior. Închide pereții/geamurile în jurul unității AC (fără găuri spre afară) și apoi rulează.';
+    msgEl.textContent='⚠ Spațiul nu e închis ermetic — aerul rece se pierde în exterior. Zonele roșii arată aerul din afară pătruns înăuntru; închide golul din pereți acolo (în „Editor plan”) și apoi rulează.';
+    leakHighlight=true; draw();
     return;
   }
-  msgEl.classList.remove('warn');
+  msgEl.classList.remove('warn'); leakHighlight=false;
   stopRun(false);
   const P=readParams(); lastP=P;
   sim=buildSim(2,P,ITERS_LIVE); simTime=0; running=true;
@@ -934,6 +956,12 @@ function autoPlace(){
     const x=i%COLS,y=(i/COLS|0); if(isWallAdjacent(x,y))candidates.push(i);
   }
   if(!candidates.length){document.getElementById('msg').textContent='Desenează întâi pereți — unitatea se montează pe un perete.';return;}
+  if(!hasSealedInterior()){
+    const m=document.getElementById('msg');m.classList.add('warn');
+    m.textContent='⚠ Planul nu e închis ermetic — nu există o zonă etanșă de răcit, deci orice poziție dă 0%. Zonele roșii arată aerul din afară pătruns înăuntru; închide golul din pereți în „Editor plan”.';
+    leakHighlight=true; draw(); return;
+  }
+  document.getElementById('msg').classList.remove('warn'); leakHighlight=false;
   showLoader('Caut poziția optimă — presortare…');
   setTimeout(()=>{
     const short=candidates.map(c=>[quickScore(c),c])
@@ -1074,6 +1102,21 @@ function draw(){
   if(!editorMode){
     for(let i=0;i<grid.length;i++)if(grid[i]===AC)drawAC(i%COLS,(i/COLS|0));
     drawFlow();
+  }
+  // evidentierea scurgerii: zona rosie = aer din exterior patruns inauntru;
+  // inelele rosii = celule de aer strânse între pereți (probabil gaura din perete)
+  if(leakHighlight){
+    const cells=leakCells();
+    ctx.fillStyle='rgba(220,38,38,.28)';
+    for(const i of cells)ctx.fillRect((i%COLS)*CELL,(i/COLS|0)*CELL,CELL,CELL);
+    // gaura probabila = aer prins intre doi pereti COLINIARI (nu un colt)
+    const env=(x,y)=>{if(x<0||y<0||x>=COLS||y>=ROWS)return false;const g=grid[idx(x,y)];return g===WALL||g===WIN;};
+    ctx.strokeStyle='#dc2626';ctx.lineWidth=2;
+    for(const i of cells){
+      const x=i%COLS,y=(i/COLS|0);
+      if((env(x-1,y)&&env(x+1,y))||(env(x,y-1)&&env(x,y+1)))
+        ctx.strokeRect(x*CELL+1.5,y*CELL+1.5,CELL-3,CELL-3);
+    }
   }
   drawCompass();
   drawDimensions();
@@ -1303,14 +1346,15 @@ function demo(){
   // AC in living, montat pe peretele din dreapta
   grid[idx(42,8)]=AC;
   temp=null;interiorDraw=null;showTimeline(false);
-  setTempBtn(false);syncControls();
+  setTempBtn(false);syncControls();leakHighlight=false;
+  document.getElementById('msg').classList.remove('warn');
   const as=document.getElementById('aptSelect');if(as)as.value='';
   draw();
   document.getElementById('msg').textContent='Exemplu încărcat: 2 dormitoare + living. Apasă „Rulează”.';
 }
 
 // ==================== EDITOR DE PLAN + STOCARE (API SQLite) ====================
-let editorMode=false, currentPlanId=null;
+let editorMode=false, currentPlanId=null, leakHighlight=false;
 let planPhotoData=null, planPhotoImg=null;
 const $=id=>document.getElementById(id);
 function setMsg(t){$(editorMode?'eMsg':'msg').textContent=t;}
@@ -1403,7 +1447,7 @@ $('photoTop').onchange=draw;
 
 // --- proprietati / salvare ---
 function newPlan(){
-  currentPlanId=null;grid=new Uint8Array(COLS*ROWS);
+  currentPlanId=null;grid=new Uint8Array(COLS*ROWS);leakHighlight=false;
   $('eName').value='';$('eNorth').value=0;$('eHeight').value='2.6';$('eScale').value='0.33';
   $('drawOpacity').value=100;$('dopV').textContent='100';$('photoTop').checked=false;$('photoLock').checked=false;
   setPhoto(null);$('photoInput').value='';
@@ -1429,7 +1473,7 @@ async function savePlan(){
 async function editPlan(id){
   try{
     const p=await apiGet(id);
-    grid=strToGrid(p.grid);currentPlanId=p.id;
+    grid=strToGrid(p.grid);currentPlanId=p.id;leakHighlight=false;
     $('eName').value=p.name;$('eNorth').value=p.north;
     $('eHeight').value=p.height;$('eScale').value=String(p.scale);
     setPhoto(p.photo||null);$('photoInput').value='';   // resetează transformarea
@@ -1489,6 +1533,7 @@ async function refreshPlans(){
 $('aptSelect').onchange=async()=>{
   const id=$('aptSelect').value;
   stopRun(false);temp=null;interiorDraw=null;showTimeline(false);setTempBtn(false);syncControls();
+  leakHighlight=false;$('msg').classList.remove('warn');
   if(!id){$('aptHint').textContent='Desen liber. Alege un apartament salvat sau desenează.';draw();return;}
   try{
     const p=await apiGet(id);
@@ -1503,6 +1548,7 @@ document.getElementById('run').onclick=()=>{running?stopRun(true):startRun();};
 document.getElementById('auto').onclick=autoPlace;
 document.getElementById('clear').onclick=()=>{stopRun(false);grid=new Uint8Array(COLS*ROWS);
   temp=null;interiorDraw=null;showTimeline(false);setTempBtn(false);syncControls();
+  leakHighlight=false;document.getElementById('msg').classList.remove('warn');
   document.getElementById('aptSelect').value='';draw();
   document.getElementById('cov').textContent='–';document.getElementById('msg').textContent='Plan gol.';};
 document.getElementById('demo').onclick=demo;
