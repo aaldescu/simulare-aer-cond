@@ -68,6 +68,22 @@
   .filerow{display:flex;gap:8px;align-items:center}
   .filerow input[type=file]{font-size:12px}
   .field-lock{opacity:.6}
+  /* pagina de explicatii */
+  .docs{max-width:820px;margin:0 auto;line-height:1.6}
+  .docs h2{font-size:20px;margin:26px 0 8px;color:var(--text);border-bottom:2px solid var(--line);padding-bottom:6px}
+  .docs h3{font-size:15px;margin:18px 0 6px;color:var(--accent)}
+  .docs p,.docs li{font-size:14.5px;color:#1e293b}
+  .docs ul{margin:6px 0;padding-left:20px}
+  .docs .lead{font-size:15px;color:var(--muted)}
+  .docs .eq{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent2);
+    border-radius:8px;padding:10px 14px;margin:10px 0;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:13.5px;overflow-x:auto;white-space:pre}
+  .docs .note{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 14px;margin:12px 0;font-size:13.5px;color:#7c2d12}
+  .docs table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
+  .docs th,.docs td{border:1px solid var(--line);padding:6px 9px;text-align:left}
+  .docs th{background:var(--panel2);font-weight:600}
+  .docs code{background:var(--panel2);border-radius:4px;padding:1px 5px;font-size:13px}
+  .docs .sym{color:var(--muted)}
   /* layout pe toata latimea: planul creste, panoul lateral ramane fix */
   .canvasbox{flex:1 1 520px;min-width:0}
   /* pastreaza strict raportul 3:2 (altfel busola iese ovala); limiteaza prin latime */
@@ -86,6 +102,7 @@
   <div class="menubar" id="menubar">
     <button data-view="sim" class="active">Simulator</button>
     <button data-view="editor">🏠 Editor plan</button>
+    <button data-view="docs">📖 Model fizic</button>
   </div>
 
   <div class="wrap">
@@ -241,6 +258,80 @@
         <h2>Planuri salvate</h2>
         <div class="plans-list" id="plansList"><p class="hint">Se încarcă…</p></div>
       </div>
+    </div>
+  </div>
+
+  <div id="view-docs" class="docs" style="display:none">
+    <h2>Cum funcționează simularea</h2>
+    <p class="lead">Simulatorul rezolvă o curgere de aer incompresibilă în plan (vedere de sus), cuplată cu transportul căldurii — o variantă rapidă a metodei „stable fluids” (Jos Stam). Nu e un instrument de proiectare certificat: e un model fizic simplificat, calibrat să dea intuiție corectă despre cum se răcește un apartament.</p>
+
+    <h2>1. Curgerea aerului (Navier–Stokes incompresibil)</h2>
+    <p>Câmpul de viteze <code>u</code> e rezolvat, nu presupus. Pe fiecare pas de timp se rezolvă (formă simplificată 2D, cu frecare):</p>
+    <div class="eq">∂u/∂t + (u·∇)u = −∇p/ρ + f_ventilator − DRAG·u
+∇·u = 0            (incompresibilitate: aerul care pleacă se întoarce)</div>
+    <ul>
+      <li><b>Advecție</b> — semi-Lagrangiană: se urmărește înapoi traiectoria și se interpolează. Traseul e tăiat la primul perete, ca aerul să nu „străpungă” zidul.</li>
+      <li><b>Proiecție de presiune</b> — se rezolvă ∇²p = ∇·u prin iterații Gauss–Seidel (26 pe pas), apoi u ← u − ∇p. Așa se impune conservarea masei (recircularea).</li>
+      <li><b>Frecare cu podeaua și tavanul</b> (înlocuiește dimensiunea verticală absentă din vederea de sus): <code>u ← u · e^(−DRAG·dt)</code>.</li>
+      <li><b>Jetul AC</b> — o forță de corp pe „culoarul” din fața unității: <code>F = 2·DRAG·v_jet·dt</code>. La echilibru cu frecarea dă viteza jetului <code>v_jet</code>.</li>
+    </ul>
+    <p class="sym">Pereții și geamurile sunt obstacole solide (viteză 0); ușile sunt aer permeabil (jetul trece prin ele).</p>
+
+    <h2>2. Transportul căldurii</h2>
+    <p>Temperatura <code>T</code> e purtată de curgere și amestecată prin difuzie turbulentă:</p>
+    <div class="eq">∂T/∂t + (u·∇)T = α·∇²T + (surse − extracție)</div>
+    <p>Difuzia e explicită (stabilă): <code>T[i] += a·(Σ T_vecini − n·T[i])</code>, cu <code>a = α·dt/h²</code>. Advecția temperaturii folosește același traseu semi-Lagrangian ca viteza. Un pas de corecție redistribuie reziduul numeric, ca faza de transport să nu creeze/distrugă energie (interiorul e etanș prin construcție).</p>
+
+    <h2>3. Unitatea de aer condiționat (buget de energie + termostat)</h2>
+    <p>AC-ul extrage căldură din zona din fața lui, plafonat de puterea în wați ȘI de debitul ventilatorului:</p>
+    <div class="eq">Q = min( P_BTU ,  ṁ · c_p · (T_retur − T_suflare) ) · duty
+duty = clamp( (T_cameră − T_setată) / 0.5 , 0 , 1 )      (termostat)
+T_suflare = max(8, T_setată − 12) °C
+P_BTU = BTU · 0.293  [W]         c_p(aer) = 1005 J/(kg·K)</div>
+    <p>Termostatul reduce sarcina compresorului (<code>duty</code>) când aerul de retur (media camerei conectate) se apropie de temperatura setată. Extracția aplicată pe pas e <code>k = min(1, Q·dt/E)</code>, unde <code>E</code> e energia disponibilă în celulele din fața unității. Astfel o unitate cu ventilator „Sleep” nu poate livra oricâți BTU — debitul <code>ṁ</code> limitează.</p>
+
+    <h2>4. Anvelopa: conducție + soare + exterior</h2>
+    <h3>Conducție prin pereți și geamuri</h3>
+    <div class="eq">dT/dt = U · A · (T_afară − T) / C_celulă
+C_celulă = ρc · h² · H_tavan        ρc(aer) = 1206 J/(m³·K)</div>
+    <p>Fiecare celulă interioară lipită de anvelopă schimbă căldură cu exteriorul, proporțional cu transmitanța <code>U</code> a peretelui/geamului.</p>
+    <h3>Aport solar prin ferestre</h3>
+    <div class="eq">P_soare = f · I_oră · S_geam · scară     [W pe fereastră]
+f = 0.15 + 0.85·cos(Δ)   dacă cos(Δ) > 0 ,  altfel 0.15</div>
+    <p><code>Δ</code> e unghiul dintre normala ferestrei și direcția soarelui. O fereastră față-în-față cu soarele primește <code>f = 1</code>; una perpendiculară sau la umbră, ~0.15. Ora dă azimutul soarelui, iar <b>nordul</b> (unghi 0–360°) rotește planul față de busolă — de aceea orientarea contează.</p>
+    <p class="sym">Exteriorul (aerul din afara anvelopei) e un rezervor infinit, relaxat mereu spre temperatura de afară.</p>
+
+    <h2>5. Constante și parametri</h2>
+    <table>
+      <tr><th>Mărime</th><th>Simbol</th><th>Valoare</th></tr>
+      <tr><td>Capacitate termică volumetrică a aerului</td><td>ρc</td><td>1206 J/(m³·K)</td></tr>
+      <tr><td>Căldură specifică a aerului</td><td>c_p</td><td>1005 J/(kg·K)</td></tr>
+      <tr><td>Transmitanță perete / geam</td><td>U</td><td>0.8 / 2.8 W/(m²·K)</td></tr>
+      <tr><td>Aport solar pe fereastră însorită</td><td>S_geam</td><td>300 W/m</td></tr>
+      <tr><td>Difuzie turbulentă a temperaturii</td><td>α</td><td>0.005 m²/s</td></tr>
+      <tr><td>Frecare podea+tavan</td><td>DRAG</td><td>0.35 s⁻¹</td></tr>
+      <tr><td>Viteză jet — Sleep / Medium / Max</td><td>v_jet</td><td>1.2 / 2.2 / 3.2 m/s</td></tr>
+      <tr><td>Debit aer — Sleep / Medium / Max</td><td>ṁ</td><td>0.10 / 0.16 / 0.24 kg/s</td></tr>
+      <tr><td>Conversie BTU → wați</td><td>—</td><td>× 0.293</td></tr>
+      <tr><td>Intensitate soare — dimineață/prânz/după-amiază</td><td>I_oră</td><td>0.75 / 1.0 / 0.9</td></tr>
+    </table>
+
+    <h2>6. Grilă, timp și convergență</h2>
+    <ul>
+      <li>Desenezi pe o grilă de <b>48×32</b>; solverul rulează pe o subgrilă <b>96×64</b> (2×), cu <code>h = scară / 2</code> metri pe celulă.</li>
+      <li>Pas de timp <code>dt = 0.75 s</code>, 4 sub-pași pe cadru ≈ <b>180× timp real</b>. Simularea se oprește la echilibru sau la <b>90 de minute</b> simulate.</li>
+      <li><b>Acoperire confort</b> = procentul celulelor de aer interior cu <code>T ≤ T_setată + prag</code>.</li>
+    </ul>
+
+    <h2>7. Etanșeitate și găsirea poziției optime</h2>
+    <ul>
+      <li><b>Verificarea de etanșeitate</b>: un flood-fill din marginile planului, oprit doar de pereți și geamuri. Dacă ajunge la aerul de lângă AC, zona nu e închisă ermetic (aerul rece se pierde) — simularea e blocată, iar breșa e găsită prin „astuparea” de probă a fiecărei celule suspecte.</li>
+      <li><b>Poziția optimă</b>: triaj în 3 trepte — scor geometric rapid (Dijkstra) pe toate celulele lipite de interior → CFD grosier pe primele 20 → CFD complet pe primele 2 finaliste. Câștigătoarea maximizează acoperirea.</li>
+    </ul>
+
+    <h2>Limite ale modelului</h2>
+    <div class="note">
+      Model în <b>vedere de sus (2D)</b>: stratificarea verticală și flotabilitatea (aerul rece coboară) nu sunt modelate — frecarea podea+tavan le înlocuiește aproximativ. Coeficienții (U, aport solar, difuzie) sunt valori de bun-simț, calibrate pentru intuiție, nu măsurate pentru clădirea ta. Folosește-l ca să compari scenarii (unde pui AC-ul, cât BTU, uși deschise/închise), nu ca dimensionare de proiect.
     </div>
   </div>
 
@@ -1421,10 +1512,16 @@ const apiDelete=id=>api('DELETE','/api/plans/'+id);
 
 // --- comutare vederi (meniu) ---
 function setView(v){
+  document.querySelectorAll('#menubar button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+  const docs=(v==='docs');
+  document.querySelector('.wrap').style.display=docs?'none':'';
+  $('view-docs').style.display=docs?'':'none';
+  if(docs){stopRun(false);
+    $('sub').textContent='Modelul fizic din spatele simulării: ecuațiile, constantele și limitele.';
+    window.scrollTo(0,0);return;}
   editorMode=(v==='editor');
   $('side-sim').style.display=editorMode?'none':'';
   $('side-editor').style.display=editorMode?'':'none';
-  document.querySelectorAll('#menubar button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
   $('sub').textContent=editorMode
     ? 'Editor de plan: încarcă poza apartamentului, desenează peste ea pereți/uși/ferestre/AC și salvează planul. Se folosește apoi în simulator.'
     : 'Desenează planul, pune unitatea de AC și privește simularea fizică (CFD) în timp real.';
