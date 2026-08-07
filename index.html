@@ -71,12 +71,6 @@
   .canvasbox{flex:1 1 520px;min-width:0}
   #cv{width:100%;height:auto;aspect-ratio:3/2;max-height:calc(100vh - 130px);margin:0 auto}
   #tl{width:100%;height:auto}
-  .zoomctl{position:absolute;left:20px;top:20px;display:flex;gap:4px;z-index:4}
-  .zoomctl button{width:30px;height:30px;border:1px solid var(--line);background:rgba(255,255,255,.92);
-    border-radius:7px;cursor:pointer;font-size:15px;font-weight:700;color:var(--text);line-height:1;
-    display:flex;align-items:center;justify-content:center}
-  .zoomctl button:hover{background:#e0f2fe;border-color:var(--accent)}
-  .zoomctl .zlvl{width:auto;padding:0 8px;font-size:12px;font-weight:600;color:var(--muted);cursor:default}
 </style>
 </head>
 <body>
@@ -91,12 +85,6 @@
   <div class="wrap">
     <div class="canvasbox">
       <canvas id="cv" width="720" height="480"></canvas>
-      <div class="zoomctl">
-        <button id="zin" title="Apropie (rotița mouse-ului)">＋</button>
-        <button id="zout" title="Depărtează">－</button>
-        <span class="zlvl" id="zlvl">100%</span>
-        <button id="zfit" title="Încadrează la loc">⤢</button>
-      </div>
       <div id="loader"><div class="spin"></div><div class="lt" id="loaderTxt">Se pregătește simularea…</div></div>
       <div class="legend">
         <span>Rece</span><div class="grad"></div><span>Cald</span>
@@ -164,10 +152,7 @@
           <div><label class="slab">Nord (° azimut)</label>
             <input type="number" id="north" value="0" min="0" max="359" step="1"></div>
           <div><label class="slab">Scară (m/celulă)</label>
-            <select id="scale">
-              <option value="0.25">0,25</option><option value="0.33">0,33</option>
-              <option value="0.4">0,40</option><option value="0.5">0,50</option>
-            </select></div>
+            <input type="number" id="scale" value="0.33" min="0.05" max="2" step="0.01"></div>
           <div><label class="slab">Înălțime tavan (m)</label>
             <input type="number" id="height" value="2.6" min="2" max="4" step="0.1"></div>
         </div>
@@ -200,6 +185,8 @@
           <input type="file" id="photoInput" accept="image/*">
           <button class="btn ghost" id="photoClear" style="width:auto;margin:0;padding:6px 10px">Scoate</button>
         </div>
+        <label class="slab">Mărime poză: <span id="pzV">100</span>%</label>
+        <input type="range" id="photoZoom" min="20" max="400" value="100">
         <label class="slab">Opacitate poză: <span id="opV">55</span>%</label>
         <input type="range" id="opacity" min="0" max="100" value="55">
         <label class="slab">Opacitate desen: <span id="dopV">100</span>%</label>
@@ -207,7 +194,8 @@
         <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;cursor:pointer">
           <input type="checkbox" id="photoTop"> Poză deasupra desenului
         </label>
-        <p class="hint" style="margin:8px 0 0">Încarcă poza planului și desenează peste ea. Reglează opacitatea pozei sau a desenului, ori pune poza deasupra ca ghid.</p>
+        <button class="btn ghost" id="photoReset" style="margin-top:8px">↺ Resetează poziția pozei</button>
+        <p class="hint" style="margin:8px 0 0">Mărește poza din slider (sau cu rotița) și trage-o cu butonul drept al mausului ca s-o aliniezi la grilă. Apoi desenează peste ea.</p>
       </div>
 
       <div class="card">
@@ -230,10 +218,7 @@
           <div><label class="slab">Nord (° azimut)</label>
             <input type="number" id="eNorth" value="0" min="0" max="359" step="1"></div>
           <div><label class="slab">Scară (m/celulă)</label>
-            <select id="eScale">
-              <option value="0.25">0,25</option><option value="0.33">0,33</option>
-              <option value="0.4">0,40</option><option value="0.5">0,50</option>
-            </select></div>
+            <input type="number" id="eScale" value="0.33" min="0.05" max="2" step="0.01"></div>
           <div><label class="slab">Înălțime tavan (m)</label>
             <input type="number" id="eHeight" value="2.6" min="2" max="4" step="0.1"></div>
         </div>
@@ -262,21 +247,15 @@ let tool='wall',drawing=false;
 let colorSet=24,colorAmb=35;              // repere pentru colorare (temp setata / afara)
 const idx=(x,y)=>y*COLS+x;
 
-// ---------- zoom & pan ----------
-let zoom=1,panX=0,panY=0;
-function clampPan(){
-  panX=Math.min(0,Math.max(CV.width*(1-zoom),panX));
-  panY=Math.min(0,Math.max(CV.height*(1-zoom),panY));
+// ---------- transformarea pozei de fundal (zoom + pan DOAR pentru poză) ----------
+// Grila de desen rămâne fixă (1:1 cu simularea). Poza se poate mări din slider
+// și repoziționa trăgând cu butonul drept/mijloc, ca s-o aliniezi la grilă.
+let photoScale=1, photoX=0, photoY=0;
+function resetPhotoTransform(){
+  photoScale=1; photoX=0; photoY=0;
+  const s=document.getElementById('photoZoom');
+  if(s){s.value=100;document.getElementById('pzV').textContent='100';}
 }
-function updateZoomLabel(){const el=document.getElementById('zlvl');if(el)el.textContent=Math.round(zoom*100)+'%';}
-function zoomAt(ix,iy,factor){
-  const nz=Math.min(6,Math.max(1,zoom*factor));
-  const gx=(ix-panX)/zoom, gy=(iy-panY)/zoom;   // punctul de sub cursor, in coord. interne
-  zoom=nz; panX=ix-gx*zoom; panY=iy-gy*zoom;    // il pastram fix sub cursor
-  clampPan();updateZoomLabel();draw();
-}
-function zoomCenter(factor){zoomAt(CV.width/2,CV.height/2,factor);}
-function zoomFit(){zoom=1;panX=0;panY=0;updateZoomLabel();draw();}
 // coordonate client -> interne (720×480), tinand cont de scalarea CSS
 function clientToInternal(ev){
   const r=CV.getBoundingClientRect();
@@ -292,9 +271,8 @@ document.getElementById('tools').addEventListener('click',e=>{
   document.querySelectorAll('.tool').forEach(el=>el.classList.toggle('active',el===t));
 });
 function cellFromEvent(ev){
-  const [ix,iy]=clientToInternal(ev);
-  const gx=(ix-panX)/zoom, gy=(iy-panY)/zoom;   // din coord. interne in coord. de grila (px)
-  return [Math.floor(gx/CELL),Math.floor(gy/CELL)];
+  const [ix,iy]=clientToInternal(ev);   // grila e fixa, deci mapare directa
+  return [Math.floor(ix/CELL),Math.floor(iy/CELL)];
 }
 function paint(x,y){
   if(x<0||y<0||x>=COLS||y>=ROWS)return;
@@ -307,11 +285,12 @@ function paint(x,y){
   setTempBtn(false); syncControls();
   grid[idx(x,y)]=v; draw();
 }
-// panoramare cu butonul drept / mijloc; desenare cu butonul stang
+// pan pentru POZĂ cu butonul drept / mijloc (în editor); desenare cu stânga
 let panning=false,plx=0,ply=0;
 function down(ev){
-  if(ev.button===1||ev.button===2){ // buton mijloc/drept -> pan
-    panning=true;plx=ev.clientX;ply=ev.clientY;ev.preventDefault();return;
+  if(ev.button===1||ev.button===2){ // buton mijloc/drept -> mută poza
+    if(editorMode&&planPhotoImg){panning=true;plx=ev.clientX;ply=ev.clientY;}
+    ev.preventDefault();return;
   }
   if(ev.button!==undefined&&ev.button!==0)return; // ignora alte butoane
   ev.preventDefault();drawing=true;const[c,r]=cellFromEvent(ev);paint(c,r);
@@ -319,9 +298,9 @@ function down(ev){
 function move(ev){
   if(panning){
     const rc=CV.getBoundingClientRect();
-    panX+=(ev.clientX-plx)*(CV.width/rc.width);
-    panY+=(ev.clientY-ply)*(CV.height/rc.height);
-    plx=ev.clientX;ply=ev.clientY;clampPan();draw();return;
+    photoX+=(ev.clientX-plx)*(CV.width/rc.width);
+    photoY+=(ev.clientY-ply)*(CV.height/rc.height);
+    plx=ev.clientX;ply=ev.clientY;draw();return;
   }
   if(!drawing)return;ev.preventDefault();const[c,r]=cellFromEvent(ev);paint(c,r);
 }
@@ -329,8 +308,14 @@ function up(){drawing=false;panning=false;}
 CV.addEventListener('mousedown',down);CV.addEventListener('mousemove',move);
 window.addEventListener('mouseup',up);
 CV.addEventListener('contextmenu',e=>e.preventDefault());
-CV.addEventListener('wheel',ev=>{ev.preventDefault();const[ix,iy]=clientToInternal(ev);
-  zoomAt(ix,iy,ev.deltaY<0?1.12:1/1.12);},{passive:false});
+// rotița mouse-ului mărește/micșorează POZA (doar în editor, când există poză)
+CV.addEventListener('wheel',ev=>{
+  if(!(editorMode&&planPhotoImg))return;
+  ev.preventDefault();
+  const s=document.getElementById('photoZoom');
+  const v=Math.max(+s.min,Math.min(+s.max,+s.value+(ev.deltaY<0?10:-10)));
+  s.value=v;document.getElementById('pzV').textContent=v;photoScale=v/100;draw();
+},{passive:false});
 CV.addEventListener('touchstart',down,{passive:false});
 CV.addEventListener('touchmove',move,{passive:false});
 window.addEventListener('touchend',up);
@@ -349,7 +334,7 @@ window.addEventListener('touchend',up);
 //    (compresorul isi reduce sarcina cand aerul de retur atinge temp. setata).
 // Frana de frecare (podea+tavan) inlocuieste dimensiunea verticala absenta;
 // flotabilitatea nu apare in vedere de sus, deci nu e modelata.
-function scaleM(){return +document.getElementById('scale').value;}   // metri / celula de desen
+function scaleM(){return +document.getElementById('scale').value||0.33;}   // metri / celula de desen
 const SUN_DEG={morning:90, noon:180, afternoon:270, night:-1}; // azimut busola: N0 E90 S180 V270
 const SUN_INT ={morning:0.75, noon:1.0, afternoon:0.9, night:0};
 
@@ -1020,8 +1005,7 @@ function drawWindow(x,y){
 // ---------- desen ----------
 function draw(){
   ctx.setTransform(1,0,0,1,0,0);
-  ctx.clearRect(0,0,CV.width,CV.height);
-  ctx.setTransform(zoom,0,0,zoom,panX,panY);   // aplica zoom/pan pentru tot desenul
+  ctx.clearRect(0,0,CV.width,CV.height);        // grila e fixa — fara zoom pe desen
   const photo=editorMode&&planPhotoImg;
   const photoTop=editorMode&&document.getElementById('photoTop').checked;
   const dOp=editorMode?(+document.getElementById('drawOpacity').value||0)/100:1;
@@ -1058,8 +1042,8 @@ function drawPhoto(){
   if(!planPhotoImg)return;
   ctx.save();ctx.globalAlpha=(+document.getElementById('opacity').value||0)/100;
   const iw=planPhotoImg.width,ih=planPhotoImg.height;
-  const s=Math.min(CV.width/iw,CV.height/ih),w=iw*s,h=ih*s;
-  ctx.drawImage(planPhotoImg,(CV.width-w)/2,(CV.height-h)/2,w,h);
+  const base=Math.min(CV.width/iw,CV.height/ih), s=base*photoScale, w=iw*s,h=ih*s;
+  ctx.drawImage(planPhotoImg,(CV.width-w)/2+photoX,(CV.height-h)/2+photoY,w,h);
   ctx.restore();
 }
 // puncte reprezentative: centrul fiecarei camere; la camerele mari si
@@ -1204,7 +1188,9 @@ function drawDimensions(){
   }
   const dimEl=document.getElementById('dim'),areaEl=document.getElementById('area'),volEl=document.getElementById('vol');
   if(maxX<0){if(dimEl)dimEl.textContent='–';if(areaEl)areaEl.textContent='–';if(volEl)volEl.textContent='–';return;}
-  const m=scaleM(), hgt=+document.getElementById('height').value||2.6;
+  // in editor foloseste scara/inaltimea apartamentului editat; in simulator pe cele curente
+  const m=editorMode?(+document.getElementById('eScale').value||0.33):scaleM();
+  const hgt=(editorMode?+document.getElementById('eHeight').value:+document.getElementById('height').value)||2.6;
   const wM=(maxX-minX+1)*m, hM=(maxY-minY+1)*m, areaM=interiorArea()*m*m, volM=areaM*hgt;
   const x0=minX*CELL,x1=(maxX+1)*CELL,y0=minY*CELL,y1=(maxY+1)*CELL;
   ctx.strokeStyle='#0f172a';ctx.fillStyle='#0f172a';ctx.lineWidth=1;
@@ -1316,12 +1302,11 @@ function setView(v){
     ? 'Editor de plan: încarcă poza apartamentului, desenează peste ea pereți/uși/ferestre/AC și salvează planul. Se folosește apoi în simulator.'
     : 'Desenează planul, pune unitatea de AC și privește simularea fizică (CFD) în timp real.';
   if(editorMode)stopRun(false);
-  zoomFit();   // fiecare vedere porneste incadrata
+  draw();
 }
 $('menubar').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setView(b.dataset.view);});
-$('zin').onclick=()=>zoomCenter(1.25);
-$('zout').onclick=()=>zoomCenter(0.8);
-$('zfit').onclick=zoomFit;
+$('photoZoom').oninput=()=>{$('pzV').textContent=$('photoZoom').value;photoScale=+$('photoZoom').value/100;draw();};
+$('photoReset').onclick=()=>{resetPhotoTransform();draw();};
 
 // --- unealta in editor (acelasi `tool` global) ---
 $('etools').addEventListener('click',e=>{
@@ -1333,6 +1318,7 @@ $('etools').addEventListener('click',e=>{
 // --- poza de fundal ---
 function setPhoto(dataUrl){
   planPhotoData=dataUrl||null;
+  resetPhotoTransform();                 // poza noua porneste centrata, la 100%
   if(!dataUrl){planPhotoImg=null;draw();return;}
   const im=new Image();im.onload=()=>{planPhotoImg=im;draw();};im.src=dataUrl;
 }
@@ -1373,7 +1359,7 @@ async function savePlan(){
   const hasGeom=grid.some(v=>v===WALL||v===WIN);
   if(!hasGeom){setMsg('Desenează cel puțin pereții planului.');return;}
   const payload={name,cols:COLS,rows:ROWS,grid:gridToStr(grid),
-    north:+$('eNorth').value||0,height:+$('eHeight').value||2.6,scale:+$('eScale').value,
+    north:+$('eNorth').value||0,height:+$('eHeight').value||2.6,scale:+$('eScale').value||0.33,
     photo:planPhotoData||null};
   try{
     const saved=currentPlanId?await apiUpdate(currentPlanId,payload):await apiCreate(payload);
@@ -1467,8 +1453,10 @@ th.oninput=()=>{document.getElementById('thV').textContent=th.value;
 });
 document.getElementById('height').addEventListener('input',()=>{if(running||temp)startRun();else draw();});
 document.getElementById('north').addEventListener('input',()=>{if(running||temp)startRun();else draw();});
-// in editor: nordul roteste doar busola; scara/inaltimea nu cer redesenare simulare
-document.getElementById('eNorth').addEventListener('input',()=>{if(editorMode)draw();});
+document.getElementById('scale').addEventListener('input',()=>{if(running||temp)startRun();else draw();});
+// in editor: nordul roteste busola; scara/inaltimea actualizeaza cotele de pe plan
+['eNorth','eScale','eHeight'].forEach(id=>
+  document.getElementById(id).addEventListener('input',()=>{if(editorMode)draw();}));
 
 // presetari (raspunsurile tale)
 function preset(id,v){document.getElementById(id).value=v;}
