@@ -29,6 +29,7 @@
   .btn{width:100%;padding:10px;border:none;border-radius:8px;background:var(--accent2);color:#001018;
     font-weight:600;cursor:pointer;font-size:14px;margin-top:6px}
   .btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
   .row{display:flex;gap:8px}
   label.slab{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
   input[type=range]{width:100%}
@@ -134,6 +135,10 @@
         <label class="slab">Prag confort: temp. setată + <span id="thV">2</span>°C</label>
         <input type="range" id="th" min="1" max="6" value="2">
         <button class="btn" id="run" style="margin-top:12px">▶ Rulează simularea</button>
+        <div class="row" style="margin-top:8px">
+          <button class="btn ghost" id="pause" disabled>⏸ Pauză</button>
+          <button class="btn ghost" id="tempbtn" disabled>🌡 Temperatură: OFF</button>
+        </div>
         <button class="btn ghost" id="auto" style="margin-top:8px">✨ Găsește poziția optimă pentru AC</button>
       </div>
 
@@ -181,6 +186,7 @@ function paint(x,y){
     return;
   }
   stopRun(false); temp=null; interiorDraw=null; showTimeline(false);
+  setTempBtn(false); syncControls();
   grid[idx(x,y)]=v; draw();
 }
 function down(ev){ev.preventDefault();drawing=true;const[c,r]=cellFromEvent(ev);paint(c,r);}
@@ -522,6 +528,41 @@ const SIM_MAX=5400;               // max 90 de minute simulate
 const ITERS_LIVE=26;
 let sim=null,simTime=0,running=false,animId=0,lastP=null;
 let snapT=null,snapTime=0;
+let paused=false,showTemps=false;
+
+// ---------- pauza + afisarea temperaturilor pe dale ----------
+const pauseBtn=document.getElementById('pause'),tempBtn=document.getElementById('tempbtn');
+function setTempBtn(on){
+  showTemps=on;
+  tempBtn.textContent='🌡 Temperatură: '+(on?'ON':'OFF');
+}
+function syncControls(){
+  pauseBtn.disabled=!running;
+  pauseBtn.textContent=paused?'▶ Continuă':'⏸ Pauză';
+  // temperaturile se pot afisa doar cand imaginea sta pe loc: in pauza sau dupa final
+  tempBtn.disabled=!(temp&&(paused||!running));
+}
+pauseBtn.onclick=()=>{
+  if(!running)return;
+  if(!paused){
+    paused=true;
+    if(animId){cancelAnimationFrame(animId);animId=0;}
+    const mm=Math.floor(simTime/60),ss=Math.round(simTime%60);
+    document.getElementById('msg').textContent=
+      `Pauză la min ${mm}:${String(ss).padStart(2,'0')} — apasă „Temperatură” ca să vezi valorile pe hartă.`;
+    syncControls();draw();
+  }else{
+    // la repornire temperaturile dispar si butonul revine pe OFF
+    paused=false;setTempBtn(false);
+    syncControls();
+    animId=requestAnimationFrame(loop);
+  }
+};
+tempBtn.onclick=()=>{
+  if(tempBtn.disabled)return;
+  setTempBtn(!showTemps);
+  draw();
+};
 
 function countAC(){let n=0;for(let i=0;i<grid.length;i++)if(grid[i]===AC)n++;return n;}
 
@@ -586,6 +627,7 @@ function startRun(){
   colorSet=P.setT; colorAmb=P.outT;
   snapT=new Float32Array(sim.T); snapTime=0;
   hist=[]; showTimeline(true); drawTimeline(false);
+  paused=false; setTempBtn(false); syncControls();
   document.getElementById('run').textContent='■ Oprește simularea';
   animId=requestAnimationFrame(loop);
 }
@@ -611,16 +653,18 @@ function loop(){
   if(done)finishRun(); else animId=requestAnimationFrame(loop);
 }
 function finishRun(){
-  running=false;animId=0;
+  running=false;animId=0;paused=false;
   document.getElementById('run').textContent='▶ Rulează simularea';
+  syncControls();
   drawTimeline(true);
   finalStats();
 }
 function stopRun(finalize=true){
   if(animId){cancelAnimationFrame(animId);animId=0;}
   if(running){
-    running=false;
+    running=false;paused=false;
     document.getElementById('run').textContent='▶ Rulează simularea';
+    syncControls();
     if(finalize&&sim){drawTimeline(true);finalStats();}
   }
 }
@@ -852,6 +896,75 @@ function draw(){
   drawFlow();
   drawCompass();
   drawDimensions();
+  drawTempLabels();
+}
+// puncte reprezentative: centrul fiecarei camere; la camerele mari si
+// punctul cel mai cald + cel mai rece
+function pickSamples(){
+  const regions=[],seen=new Uint8Array(grid.length);
+  // usile despart regiunile, ca fiecare camera sa-si primeasca punctele ei
+  const blk=i=>grid[i]===WALL||grid[i]===WIN||grid[i]===DOOR;
+  for(let s=0;s<grid.length;s++){
+    if(seen[s])continue;
+    if(blk(s)||!interiorDraw[s]||isNaN(temp[s])){seen[s]=1;continue;}
+    const cells=[],q=[s];seen[s]=1;
+    while(q.length){
+      const i=q.pop();cells.push(i);
+      const x=i%COLS,y=(i/COLS|0);
+      for(const[nx,ny]of[[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
+        if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;
+        const j=idx(nx,ny);
+        if(seen[j]||blk(j)||!interiorDraw[j]||isNaN(temp[j]))continue;
+        seen[j]=1;q.push(j);
+      }
+    }
+    if(cells.length>=8)regions.push(cells);
+  }
+  regions.sort((a,b)=>b.length-a.length);
+  const pts=[];
+  const add=i=>{if(!pts.some(p=>p.i===i))pts.push({i,x:i%COLS,y:(i/COLS|0),t:temp[i]});};
+  for(const cells of regions.slice(0,6)){
+    let sx=0,sy=0,hot=cells[0],cold=cells[0];
+    for(const i of cells){
+      sx+=i%COLS;sy+=(i/COLS|0);
+      if(temp[i]>temp[hot])hot=i;
+      if(temp[i]<temp[cold])cold=i;
+    }
+    const cx=sx/cells.length,cy=sy/cells.length;
+    let cen=cells[0],bd=1e9;
+    for(const i of cells){
+      const dx=i%COLS-cx,dy=(i/COLS|0)-cy,d=dx*dx+dy*dy;
+      if(d<bd){bd=d;cen=i;}
+    }
+    add(cen);
+    if(cells.length>60){add(hot);add(cold);}
+  }
+  return pts.slice(0,12);
+}
+function drawTempLabels(){
+  if(!showTemps||!temp||!interiorDraw)return;
+  if(running&&!paused)return;
+  const pts=pickSamples();
+  ctx.font='bold 13px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  for(const p of pts){
+    const x=(p.x+0.5)*CELL,y=(p.y+0.5)*CELL;
+    const label=p.t.toFixed(1)+' °C';
+    const w=ctx.measureText(label).width+12,h=20;
+    const bx=Math.min(Math.max(x,w/2+2),COLS*CELL-w/2-2);
+    const by=Math.min(Math.max(y-16,h/2+2),ROWS*CELL-h/2-2);
+    // punctul masurat
+    ctx.fillStyle='#0f172a';
+    ctx.beginPath();ctx.arc(x,y,2.2,0,7);ctx.fill();
+    // placuta cu valoarea, destul de mare ca sa fie lizibila
+    ctx.fillStyle='rgba(255,255,255,.95)';
+    ctx.strokeStyle='#64748b';ctx.lineWidth=1;
+    ctx.beginPath();
+    if(ctx.roundRect)ctx.roundRect(bx-w/2,by-h/2,w,h,5);
+    else ctx.rect(bx-w/2,by-h/2,w,h);
+    ctx.fill();ctx.stroke();
+    ctx.fillStyle='#0f172a';
+    ctx.fillText(label,bx,by+0.5);
+  }
 }
 // sageti din campul de viteze rezolvat: directia curgerii, lungimea ∝ viteza
 function drawFlow(){
@@ -994,14 +1107,15 @@ function demo(){
   grid[idx(30,4)]=WIN;grid[idx(31,4)]=WIN;
   // AC in living, montat pe peretele din dreapta
   grid[idx(42,8)]=AC;
-  temp=null;interiorDraw=null;showTimeline(false);draw();
+  temp=null;interiorDraw=null;showTimeline(false);
+  setTempBtn(false);syncControls();draw();
   document.getElementById('msg').textContent='Exemplu încărcat: 2 dormitoare + living. Apasă „Rulează”.';
 }
 
 document.getElementById('run').onclick=()=>{running?stopRun(true):startRun();};
 document.getElementById('auto').onclick=autoPlace;
 document.getElementById('clear').onclick=()=>{stopRun(false);grid=new Uint8Array(COLS*ROWS);
-  temp=null;interiorDraw=null;showTimeline(false);draw();
+  temp=null;interiorDraw=null;showTimeline(false);setTempBtn(false);syncControls();draw();
   document.getElementById('cov').textContent='–';document.getElementById('msg').textContent='Plan gol.';};
 document.getElementById('demo').onclick=demo;
 const th=document.getElementById('th');
