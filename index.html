@@ -113,6 +113,15 @@
       </div>
 
       <div class="card">
+        <h2>Unitate AC</h2>
+        <div class="tools" id="simtools">
+          <div class="tool active" data-t="ac"><span class="sw" style="background:#38bdf8"></span>Adaugă AC</div>
+          <div class="tool" data-t="erase"><span class="sw" style="background:#eef2f7;border:1px dashed #94a3b8"></span>Șterge AC</div>
+        </div>
+        <p class="hint" style="margin:8px 0 0">Pune sau șterge unități AC pe pereți ca să compari poziții. Pereții nu se modifică aici.</p>
+      </div>
+
+      <div class="card">
         <h2>Setări AC & mediu</h2>
         <div class="grid2">
           <div><label class="slab">Putere AC (BTU)</label>
@@ -277,6 +286,8 @@ function paint(x,y){
     setMsg('Unitatea de AC se montează pe perete — pune-o pe o celulă lipită de un perete.');
     return;
   }
+  // în simulator „Șterge” scoate doar AC-ul (nu strică pereții planului)
+  if(!editorMode && tool==='erase' && grid[idx(x,y)]!==AC) return;
   stopRun(false); temp=null; interiorDraw=null; showTimeline(false);
   setTempBtn(false); syncControls(); clearLeak();
   document.getElementById('msg').classList.remove('warn');
@@ -293,7 +304,8 @@ function down(ev){
     ev.preventDefault();return;
   }
   if(ev.button!==undefined&&ev.button!==0)return; // ignora alte butoane
-  if(!editorMode)return;                           // în simulator canvasul e doar afișaj
+  // în simulator se pot doar adăuga/șterge unități AC; în editor orice unealtă
+  if(!editorMode&&tool!=='ac'&&tool!=='erase')return;
   ev.preventDefault();
   if(tool==='pan'){                                // unealta de mutat poza
     if(planPhotoImg&&!photoLocked()){startPan(ev);CV.style.cursor='grabbing';}
@@ -1417,13 +1429,23 @@ function setView(v){
     ? 'Editor de plan: încarcă poza apartamentului, desenează peste ea pereți/uși/ferestre/AC și salvează planul. Se folosește apoi în simulator.'
     : 'Desenează planul, pune unitatea de AC și privește simularea fizică (CFD) în timp real.';
   if(editorMode)stopRun(false);
-  // la iesirea din editor cu unealta „Mută poza” activa, revin la desenat
-  if(!editorMode&&tool==='pan'){tool='wall';
-    document.querySelectorAll('#tools .tool').forEach(el=>el.classList.toggle('active',el.dataset.t==='wall'));}
+  // fiecare vedere are paleta ei; `tool` global preia unealta activă din paleta vizibilă
+  if(editorMode){
+    const act=$('etools').querySelector('.tool.active'); tool=act?act.dataset.t:'wall';
+  }else{
+    const act=$('simtools').querySelector('.tool.active'); tool=act?act.dataset.t:'ac';
+    if(tool!=='ac'&&tool!=='erase')tool='ac';
+  }
   CV.style.cursor=(editorMode&&tool==='pan')?'grab':'crosshair';
   draw();
 }
 $('menubar').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setView(b.dataset.view);});
+// paleta din simulator: doar Adaugă/Șterge AC
+$('simtools').addEventListener('click',e=>{
+  const t=e.target.closest('.tool');if(!t)return;
+  tool=t.dataset.t;
+  $('simtools').querySelectorAll('.tool').forEach(el=>el.classList.toggle('active',el===t));
+});
 $('photoZoom').oninput=()=>{$('pzV').textContent=$('photoZoom').value;photoScale=+$('photoZoom').value/100;draw();};
 $('photoReset').onclick=()=>{resetPhotoTransform();draw();};
 function applyPhotoLock(){
@@ -1603,6 +1625,7 @@ preset('outT','35');preset('hour','afternoon');preset('scale','0.33');
 document.getElementById('north').value='0';
 document.getElementById('thV').textContent=document.getElementById('th').value;
 
+tool='ac';        // pornim in simulator cu unealta „Adaugă AC”
 demo();
 refreshPlans();   // incarca planurile salvate (dropdown + lista editor)
 </script>
