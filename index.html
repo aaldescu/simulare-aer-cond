@@ -974,16 +974,26 @@ function autoPlace(){
   const P=readParams(); lastP=P;
   stopRun(false);
   for(let i=0;i<grid.length;i++)if(grid[i]===AC)grid[i]=EMPTY;
-  const candidates=[];
-  for(let i=0;i<grid.length;i++)if(grid[i]===EMPTY){
-    const x=i%COLS,y=(i/COLS|0); if(isWallAdjacent(x,y))candidates.push(i);
-  }
-  if(!candidates.length){document.getElementById('msg').textContent='Desenează întâi pereți — unitatea se montează pe un perete.';return;}
   if(!hasSealedInterior()){
     const m=document.getElementById('msg');m.classList.add('warn');
     m.textContent='⚠ Planul nu e închis ermetic — nu există o zonă etanșă de răcit, deci orice poziție dă 0%. Zona roșie = aer de afară pătruns înăuntru; inelul roșu = breșa. Închide-o în „Editor plan”.';
     markLeak(); draw(); return;
   }
+  // candidatii = celule lipite de perete care ating aerul INTERIOR etans
+  // (nu pereti exteriori / crestatura unui plan in L, altfel AC-ul ar sufla afara)
+  const out=floodOut();
+  const interiorNb=(x,y)=>{
+    for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,ny=y+dy;
+      if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;const j=idx(nx,ny);
+      if(grid[j]!==WALL&&grid[j]!==WIN&&!out[j])return true;}
+    return false;
+  };
+  const candidates=[];
+  for(let i=0;i<grid.length;i++)if(grid[i]===EMPTY){
+    const x=i%COLS,y=(i/COLS|0);
+    if(isWallAdjacent(x,y)&&interiorNb(x,y))candidates.push(i);
+  }
+  if(!candidates.length){document.getElementById('msg').textContent='Nu găsesc un perete lângă zona interioară pe care să montez AC-ul.';return;}
   document.getElementById('msg').classList.remove('warn'); clearLeak();
   showLoader('Caut poziția optimă — presortare…');
   setTimeout(()=>{
