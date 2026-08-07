@@ -14,12 +14,15 @@ Toată aplicația trece sub un buton **Meniu**, iar editorul de plan e una dintr
 - **Încărcare poză** a unui apartament (releveu / schiță / captură) ca fundal.
 - **Slider de opacitate** pentru poza de fundal, ca să pot desena peste ea clar.
 - **Desenare peste poză** cu uneltele existente: perete, ușă, fereastră, unitate AC.
+  - **Faza 1:** poza e doar **suport de desenat manual** (ghid vizual). Fără detectare automată.
+  - **Faza 2 (opțional, mai târziu):** detectare automată a pereților din poză. Mai complex — de evaluat ulterior.
 - Transcriere **1:1** a planului din poză în formatul de grid al simulatorului.
 - **Salvare în stocare intermediară** (ex. `localStorage`), cu posibilitatea de a reveni la un plan salvat.
 - În simulator, un **dropdown** pentru a selecta pe ce apartament rulez simularea.
 
 ### Proprietăți per apartament (setate în editor, folosite în simulator)
 - **Nordul** ca unghi din 360° (direcția exactă în care se află nordul) — ca să pot calcula pe ce linie cad razele de soare, la orice oră.
+  - **Înlocuiește complet** selectorul actual pe 4 direcții (sus / dreapta / jos / stânga). Rămâne doar unghiul fin 0–360°.
 - **Înălțimea** apartamentului (înălțimea tavanului).
 - **Scara** (metri / celulă).
 
