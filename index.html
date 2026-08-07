@@ -70,8 +70,10 @@
   /* layout pe toata latimea: planul creste, panoul lateral ramane fix */
   .canvasbox{flex:1 1 520px;min-width:0}
   /* pastreaza strict raportul 3:2 (altfel busola iese ovala); limiteaza prin latime */
-  #cv{width:100%;height:auto;aspect-ratio:3/2;max-width:calc((100vh - 140px) * 1.5);margin:0 auto}
-  #tl{width:100%;height:auto}
+  /* aceleasi constrangeri pe canvas si timeline => raman aliniate, nu se intind */
+  #cv,#tl{width:100%;max-width:calc((100vh - 140px) * 1.5);margin:0 auto;display:block}
+  #cv{height:auto;aspect-ratio:3/2}
+  #tl{height:auto}
 </style>
 </head>
 <body>
@@ -100,17 +102,7 @@
       <div class="card">
         <h2>Apartament</h2>
         <select id="aptSelect"><option value="">(desen liber)</option></select>
-        <p class="hint" id="aptHint" style="margin:8px 0 0">Alege un apartament salvat sau desenează liber. Planurile se fac în „Editor plan”.</p>
-      </div>
-      <div class="card">
-        <h2>Unealtă</h2>
-        <div class="tools" id="tools">
-          <div class="tool active" data-t="wall"><span class="sw" style="background:#334155;border:1px solid #94a3b8"></span>Perete</div>
-          <div class="tool" data-t="erase"><span class="sw" style="background:#eef2f7;border:1px dashed #94a3b8"></span>Șterge</div>
-          <div class="tool" data-t="door"><span class="sw" style="background:#b45309"></span>Ușă</div>
-          <div class="tool" data-t="window"><span class="sw" style="background:#38bdf8"></span>Fereastră</div>
-          <div class="tool" data-t="ac"><span class="sw" style="background:#38bdf8"></span>Unitate AC</div>
-        </div>
+        <p class="hint" id="aptHint" style="margin:8px 0 0">Alege un apartament salvat sau încarcă exemplul. Planurile se desenează în „Editor plan”.</p>
         <div class="row" style="margin-top:10px">
           <button class="btn ghost" id="clear">Golește tot</button>
           <button class="btn ghost" id="demo">Exemplu</button>
@@ -195,6 +187,9 @@
         <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;cursor:pointer">
           <input type="checkbox" id="photoTop"> Poză deasupra desenului
         </label>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="photoLock"> 🔒 Blochează poza (o fixezi ca să desenezi liniștit)
+        </label>
         <button class="btn ghost" id="photoReset" style="margin-top:8px">↺ Resetează poziția pozei</button>
         <p class="hint" style="margin:8px 0 0">Mărește poza din slider (sau cu rotița). Ca s-o muți, alege unealta <b>✋ Mută poza</b> și trage cu mausul (sau ține apăsat butonul drept). Apoi desenează peste ea.</p>
       </div>
@@ -267,11 +262,7 @@ function clientToInternal(ev){
 }
 
 // ---------- interactiune ----------
-document.getElementById('tools').addEventListener('click',e=>{
-  const t=e.target.closest('.tool');if(!t)return;
-  tool=t.dataset.t;
-  document.querySelectorAll('.tool').forEach(el=>el.classList.toggle('active',el===t));
-});
+// (uneltele de desen sunt doar în editor; simulatorul nu mai are paletă)
 function cellFromEvent(ev){
   const [ix,iy]=clientToInternal(ev);   // grila e fixa, deci mapare directa
   return [Math.floor(ix/CELL),Math.floor(iy/CELL)];
@@ -292,15 +283,17 @@ function paint(x,y){
 let panning=false,plx=0,ply=0;
 function evXY(ev){return ev.touches&&ev.touches[0]?[ev.touches[0].clientX,ev.touches[0].clientY]:[ev.clientX,ev.clientY];}
 function startPan(ev){const[x,y]=evXY(ev);panning=true;plx=x;ply=y;}
+function photoLocked(){const el=document.getElementById('photoLock');return el&&el.checked;}
 function down(ev){
   if(ev.button===1||ev.button===2){ // buton mijloc/drept -> mută poza (scurtătură)
-    if(editorMode&&planPhotoImg)startPan(ev);
+    if(editorMode&&planPhotoImg&&!photoLocked())startPan(ev);
     ev.preventDefault();return;
   }
   if(ev.button!==undefined&&ev.button!==0)return; // ignora alte butoane
+  if(!editorMode)return;                           // în simulator canvasul e doar afișaj
   ev.preventDefault();
-  if(editorMode&&tool==='pan'){                    // unealta de mutat poza
-    if(planPhotoImg){startPan(ev);CV.style.cursor='grabbing';}
+  if(tool==='pan'){                                // unealta de mutat poza
+    if(planPhotoImg&&!photoLocked()){startPan(ev);CV.style.cursor='grabbing';}
     return;
   }
   drawing=true;const[c,r]=cellFromEvent(ev);paint(c,r);
@@ -998,18 +991,21 @@ function drawDoor(x,y){
   }
 }
 function drawWindow(x,y){
-  const cx=x*CELL,cy=y*CELL;
-  const horiz=isWallish(x-1,y)||isWallish(x+1,y);  // fereastra intr-un perete orizontal
-  ctx.fillStyle='#dbeafe';ctx.strokeStyle='#93c5fd';ctx.lineWidth=1;
-  if(horiz){
-    ctx.fillRect(cx,cy+CELL/2-3,CELL,6);
-    ctx.strokeStyle='#38bdf8';ctx.lineWidth=1.4;
-    ctx.beginPath();ctx.moveTo(cx,cy+CELL/2);ctx.lineTo(cx+CELL,cy+CELL/2);ctx.stroke();
-  }else{
-    ctx.fillRect(cx+CELL/2-3,cy,6,CELL);
-    ctx.strokeStyle='#38bdf8';ctx.lineWidth=1.4;
-    ctx.beginPath();ctx.moveTo(cx+CELL/2,cy);ctx.lineTo(cx+CELL/2,cy+CELL);ctx.stroke();
+  const cx=x*CELL,cy=y*CELL,mx=cx+CELL/2,my=cy+CELL/2;
+  // fereastra se leaga catre fiecare vecin din anvelopa (perete SAU altă fereastră):
+  //  - perete drept (2 vecini opuși) -> linie continuă
+  //  - colț (2 vecini perpendiculari) -> fereastră în „L”
+  //  - șir de ferestre -> se conectează între ele
+  let dirs=[[1,0],[-1,0],[0,1],[0,-1]].filter(([dx,dy])=>isWallish(x+dx,y+dy));
+  if(!dirs.length)dirs=[[1,0],[-1,0]];   // fereastra izolata: orizontala implicit
+  ctx.fillStyle='#dbeafe';
+  for(const[dx,dy]of dirs){
+    if(dx)ctx.fillRect(dx>0?mx:cx, my-3, CELL/2, 6);
+    else  ctx.fillRect(mx-3, dy>0?my:cy, 6, CELL/2);
   }
+  ctx.strokeStyle='#38bdf8';ctx.lineWidth=1.4;ctx.beginPath();
+  for(const[dx,dy]of dirs){ctx.moveTo(mx,my);ctx.lineTo(mx+dx*CELL/2,my+dy*CELL/2);}
+  ctx.stroke();
 }
 
 // ---------- desen ----------
@@ -1321,6 +1317,12 @@ function setView(v){
 $('menubar').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setView(b.dataset.view);});
 $('photoZoom').oninput=()=>{$('pzV').textContent=$('photoZoom').value;photoScale=+$('photoZoom').value/100;draw();};
 $('photoReset').onclick=()=>{resetPhotoTransform();draw();};
+$('photoLock').onchange=()=>{
+  // când blochezi poza, ieși din unealta „Mută poza” ca să nu rămâi blocat
+  if($('photoLock').checked&&tool==='pan'){tool='wall';
+    $('etools').querySelectorAll('.tool').forEach(el=>el.classList.toggle('active',el.dataset.t==='wall'));
+    CV.style.cursor='crosshair';}
+};
 
 // --- unealta in editor (acelasi `tool` global) ---
 $('etools').addEventListener('click',e=>{
@@ -1363,7 +1365,7 @@ $('photoTop').onchange=draw;
 function newPlan(){
   currentPlanId=null;grid=new Uint8Array(COLS*ROWS);
   $('eName').value='';$('eNorth').value=0;$('eHeight').value='2.6';$('eScale').value='0.33';
-  $('drawOpacity').value=100;$('dopV').textContent='100';$('photoTop').checked=false;
+  $('drawOpacity').value=100;$('dopV').textContent='100';$('photoTop').checked=false;$('photoLock').checked=false;
   setPhoto(null);$('photoInput').value='';
   setMsg('Plan nou. Desenează, completează numele și salvează.');
   draw();refreshPlans();
