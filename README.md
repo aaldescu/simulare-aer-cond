@@ -48,6 +48,32 @@ Un plan = `{ name, cols, rows, grid, north, height, scale, photo }`, unde `grid`
 e un șir de cifre `0..4` (o celulă / caracter: 0 gol, 1 perete, 2 ușă, 3
 fereastră, 4 AC) și `photo` e un data-URL opțional (stocat ca BLOB).
 
+## Deployment (Dokploy / Docker)
+
+Repo-ul conține `Dockerfile` și `docker-compose.yml` gata de Dokploy (tip
+**Compose**):
+
+1. În Dokploy: proiect nou → **Create Service** → **Compose**.
+2. Sursă: acest repo Git (branch-ul dorit).
+3. În `docker-compose.yml` înlocuiește `simulare.exemplu.ro` cu domeniul tău
+   (sau folosește UI-ul **Domains** din Dokploy și lasă Traefik să injecteze
+   router-ul — atunci ai nevoie doar de `traefik.enable=true`, rețeaua
+   `dokploy-network` și portul din `loadbalancer.server.port`).
+4. Deploy — Traefik emite automat certificatul Let's Encrypt.
+
+Detalii importante:
+- Nu se publică porturi pe host; routing-ul HTTPS trece prin Traefik pe rețeaua
+  externă `dokploy-network`.
+- Baza SQLite persistă în volumul `simulare-data` (montat la `/app/data`), deci
+  planurile supraviețuiesc redeploy-urilor.
+
+Rulare locală cu Docker:
+
+```bash
+docker build -t simulare-aer-cond .
+docker run -p 3000:3000 -v simulare-data:/app/data simulare-aer-cond
+```
+
 ## Structură
 
 - `index.html` — tot frontend-ul (simulator + editor), într-un singur fișier

@@ -1,0 +1,43 @@
+# Deployment pe Dokploy (tip „Compose”).
+#
+# Dokploy folosește Traefik ca reverse proxy. Pentru aplicații Compose NU se
+# publică porturi pe host — serviciul se atașează la rețeaua externă
+# `dokploy-network`, iar routing-ul HTTPS se face prin label-urile Traefik.
+#
+# Pași în Dokploy:
+#   1. Creezi un proiect -> „Create Service” -> „Compose”.
+#   2. Sursă: acest repo Git (branch-ul dorit) sau conținutul acestui fișier.
+#   3. Înlocuiești `simulare.exemplu.ro` cu domeniul tău (sau folosești UI-ul
+#      „Domains” din Dokploy — vezi nota de jos).
+#   4. Deploy. Certificatul Let's Encrypt e emis automat de Traefik.
+
+services:
+  app:
+    build:
+      context: .
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - DATA_DIR=/app/data
+    volumes:
+      # baza SQLite persistă între redeploy-uri
+      - simulare-data:/app/data
+    networks:
+      - dokploy-network
+    labels:
+      - traefik.enable=true
+      # router HTTPS (websecure = 443, certresolver-ul implicit Dokploy = letsencrypt)
+      - traefik.http.routers.simulare-aer-cond.rule=Host(`simulare.exemplu.ro`)
+      - traefik.http.routers.simulare-aer-cond.entrypoints=websecure
+      - traefik.http.routers.simulare-aer-cond.tls.certresolver=letsencrypt
+      # spre ce port intern trimite Traefik traficul
+      - traefik.http.services.simulare-aer-cond.loadbalancer.server.port=3000
+      - traefik.docker.network=dokploy-network
+
+volumes:
+  simulare-data:
+
+networks:
+  # rețeaua e creată de Dokploy; o referențiem ca externă
+  dokploy-network:
+    external: true
