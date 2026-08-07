@@ -71,7 +71,9 @@
   .canvasbox{flex:1 1 520px;min-width:0}
   /* pastreaza strict raportul 3:2 (altfel busola iese ovala); limiteaza prin latime */
   /* aceleasi constrangeri pe canvas si timeline => raman aliniate, nu se intind */
-  #cv,#tl{width:100%;max-width:calc((100vh - 140px) * 1.5);margin:0 auto;display:block}
+  /* limita e calculata ca sa incapa pe verticala PLANUL (3:2) + timeline-ul (10:1)
+     impreuna in viewport: h_plan+h_tl = W/1.5 + W/10 = W*0.767, deci W max ≈ spatiu*1.3 */
+  #cv,#tl{width:100%;max-width:calc((100vh - 200px) * 1.3);margin:0 auto;display:block}
   #cv{height:auto;aspect-ratio:3/2}
   #tl{height:auto}
 </style>
@@ -313,7 +315,7 @@ window.addEventListener('mouseup',up);
 CV.addEventListener('contextmenu',e=>e.preventDefault());
 // rotița mouse-ului mărește/micșorează POZA (doar în editor, când există poză)
 CV.addEventListener('wheel',ev=>{
-  if(!(editorMode&&planPhotoImg))return;
+  if(!(editorMode&&planPhotoImg)||photoLocked())return;
   ev.preventDefault();
   const s=document.getElementById('photoZoom');
   const v=Math.max(+s.min,Math.min(+s.max,+s.value+(ev.deltaY<0?10:-10)));
@@ -1317,12 +1319,17 @@ function setView(v){
 $('menubar').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setView(b.dataset.view);});
 $('photoZoom').oninput=()=>{$('pzV').textContent=$('photoZoom').value;photoScale=+$('photoZoom').value/100;draw();};
 $('photoReset').onclick=()=>{resetPhotoTransform();draw();};
-$('photoLock').onchange=()=>{
-  // când blochezi poza, ieși din unealta „Mută poza” ca să nu rămâi blocat
-  if($('photoLock').checked&&tool==='pan'){tool='wall';
+function applyPhotoLock(){
+  const locked=$('photoLock').checked;
+  // blocarea oprește și zoom-ul (slider + reset), nu doar pan-ul
+  $('photoZoom').disabled=locked;
+  $('photoReset').disabled=locked;
+  $('photoZoom').parentElement.classList.toggle('field-lock',locked);
+  if(locked&&tool==='pan'){tool='wall';   // ieși din „Mută poza” ca să nu rămâi blocat
     $('etools').querySelectorAll('.tool').forEach(el=>el.classList.toggle('active',el.dataset.t==='wall'));
     CV.style.cursor='crosshair';}
-};
+}
+$('photoLock').onchange=applyPhotoLock;
 
 // --- unealta in editor (acelasi `tool` global) ---
 $('etools').addEventListener('click',e=>{
