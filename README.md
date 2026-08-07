@@ -55,11 +55,15 @@ Repo-ul conține `Dockerfile` și `docker-compose.yml` gata de Dokploy (tip
 
 1. În Dokploy: proiect nou → **Create Service** → **Compose**.
 2. Sursă: acest repo Git (branch-ul dorit).
-3. În `docker-compose.yml` înlocuiește `simulare.exemplu.ro` cu domeniul tău
-   (sau folosește UI-ul **Domains** din Dokploy și lasă Traefik să injecteze
+3. Setează `DOMAIN` cu domeniul tău (copiază `.env.example` în `.env`, sau
+   pune-l în secțiunea **Environment** a serviciului în Dokploy). Alternativ
+   folosești UI-ul **Domains** din Dokploy și lași Traefik să injecteze
    router-ul — atunci ai nevoie doar de `traefik.enable=true`, rețeaua
-   `dokploy-network` și portul din `loadbalancer.server.port`).
+   `dokploy-network` și portul din `loadbalancer.server.port`.
 4. Deploy — Traefik emite automat certificatul Let's Encrypt.
+
+Containerul are un **healthcheck** pe `/health` (interval 30s), pe care Dokploy
+îl folosește ca să știe când serviciul e „healthy”.
 
 Detalii importante:
 - Nu se publică porturi pe host; routing-ul HTTPS trece prin Traefik pe rețeaua

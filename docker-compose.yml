@@ -24,10 +24,18 @@ services:
       - simulare-data:/app/data
     networks:
       - dokploy-network
+    healthcheck:
+      # Node 22 are `fetch` global — nu depindem de curl/wget în imagine
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     labels:
       - traefik.enable=true
       # router HTTPS (websecure = 443, certresolver-ul implicit Dokploy = letsencrypt)
-      - traefik.http.routers.simulare-aer-cond.rule=Host(`simulare.exemplu.ro`)
+      # DOMAIN vine din .env / Environment-ul Dokploy (fallback: simulare.exemplu.ro)
+      - traefik.http.routers.simulare-aer-cond.rule=Host(`${DOMAIN:-simulare.exemplu.ro}`)
       - traefik.http.routers.simulare-aer-cond.entrypoints=websecure
       - traefik.http.routers.simulare-aer-cond.tls.certresolver=letsencrypt
       # spre ce port intern trimite Traefik traficul

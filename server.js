@@ -27,6 +27,9 @@ function validatePlan(b, partial = false) {
   return err;
 }
 
+// --- healthcheck (folosit de Docker/Dokploy) ---
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
 // --- API ---
 app.get('/api/plans', (req, res) => {
   res.json(listPlans());
