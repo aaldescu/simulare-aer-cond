@@ -12,38 +12,39 @@
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    background:var(--bg);color:var(--text);padding:16px}
-  h1{font-size:20px;margin:0 0 4px}
-  .sub{color:var(--muted);font-size:13px;margin:0 0 16px}
+    background:var(--bg);color:var(--text);padding:10px 14px}
+  h1{font-size:18px;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:12px;margin:0 0 8px}
   .wrap{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
   .canvasbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
   canvas{display:block;background:#eef2f7;border-radius:8px;cursor:crosshair;touch-action:none;border:1px solid var(--line)}
-  .side{flex:1;min-width:260px;max-width:340px;display:flex;flex-direction:column;gap:12px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
-  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 10px}
+  .side{flex:1;min-width:260px;max-width:340px;display:flex;flex-direction:column;gap:9px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 6px}
   .tools{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .tool{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--panel2);
     border:1px solid var(--line);border-radius:8px;cursor:pointer;font-size:13px;user-select:none}
   .tool.active{border-color:var(--accent);background:#e0f2fe}
   .sw{width:14px;height:14px;border-radius:3px;flex:none}
-  .btn{width:100%;padding:10px;border:none;border-radius:8px;background:var(--accent2);color:#001018;
-    font-weight:600;cursor:pointer;font-size:14px;margin-top:6px}
+  .btn{width:100%;padding:8px;border:none;border-radius:8px;background:var(--accent2);color:#001018;
+    font-weight:600;cursor:pointer;font-size:14px;margin-top:4px}
   .btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
   .btn:disabled{opacity:.45;cursor:not-allowed}
   .btn.on{background:#e0f2fe;border-color:var(--accent)}
   .row{display:flex;gap:8px}
-  label.slab{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
-  input[type=range]{width:100%}
-  .stat{display:flex;justify-content:space-between;font-size:14px;padding:6px 0;border-bottom:1px solid var(--line)}
+  label.slab{display:block;font-size:12px;color:var(--muted);margin:6px 0 3px}
+  input[type=range]{width:100%;margin:2px 0}
+  .stat{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid var(--line)}
   .stat:last-child{border:none}
-  .big{font-size:28px;font-weight:700}
+  .big{font-size:21px;font-weight:700}
   .cov-good{color:#4ade80}.cov-mid{color:#facc15}.cov-bad{color:#f87171}
   .legend{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-top:8px}
   .grad{height:12px;flex:1;border-radius:6px;
     background:linear-gradient(90deg,#0ea5e9,#38bdf8,#a7f3d0,#fef08a,#f97316)}
-  .hint{font-size:12px;color:var(--muted);line-height:1.5}
-  select,input[type=number]{width:100%;padding:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+  .hint{font-size:12px;color:var(--muted);line-height:1.35}
+  .hint.warn{color:#b91c1c;font-weight:600}
+  select,input[type=number]{width:100%;padding:6px 8px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px}
   .canvasbox{position:relative}
   #loader{position:absolute;inset:12px;background:rgba(248,250,252,.82);backdrop-filter:blur(2px);
     border-radius:8px;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:5}
@@ -52,7 +53,7 @@
     border-radius:50%;animation:sp .8s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
   #loader .lt{color:var(--muted);font-size:13px}
-  .menubar{display:flex;gap:6px;margin:0 0 14px}
+  .menubar{display:flex;gap:6px;margin:0 0 8px}
   .menubar button{padding:8px 16px;border:1px solid var(--line);background:var(--panel2);
     color:var(--muted);border-radius:8px;cursor:pointer;font:inherit;font-weight:600;font-size:14px}
   .menubar button.active{background:var(--accent2);color:#001018;border-color:var(--accent2)}
@@ -700,6 +701,32 @@ tempBtn.onclick=()=>{
 
 function countAC(){let n=0;for(let i=0;i<grid.length;i++)if(grid[i]===AC)n++;return n;}
 
+// verifica daca zona de racire e inchisa ermetic: exteriorul (flood din marginile
+// planului, oprit doar de pereti si geamuri — la fel ca in solver) NU trebuie sa
+// ajunga la aerul din jurul unei unitati AC. Daca ajunge, aerul rece se pierde afara.
+function enclosureOK(){
+  const N=COLS*ROWS, out=new Uint8Array(N), st=[];
+  const blocked=i=>grid[i]===WALL||grid[i]===WIN;
+  const push=(x,y)=>{if(x<0||y<0||x>=COLS||y>=ROWS)return;const j=idx(x,y);
+    if(!out[j]&&!blocked(j)){out[j]=1;st.push(j);}};
+  for(let x=0;x<COLS;x++){push(x,0);push(x,ROWS-1);}
+  for(let y=0;y<ROWS;y++){push(0,y);push(COLS-1,y);}
+  while(st.length){const i=st.pop(),x=i%COLS,y=(i/COLS|0);push(x+1,y);push(x-1,y);push(x,y+1);push(x,y-1);}
+  // trebuie sa existe o zona interioara (celule ne-solide neatinse de flood)
+  let interior=0; for(let i=0;i<N;i++) if(!blocked(i)&&!out[i]) interior++;
+  if(interior<4) return false;
+  // fiecare unitate AC trebuie sa aiba cel putin o celula de aer interioara langa ea
+  for(let i=0;i<N;i++) if(grid[i]===AC){
+    const x=i%COLS,y=(i/COLS|0); let interiorNb=false;
+    for(const[nx,ny]of[[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
+      if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;const j=idx(nx,ny);
+      if(!blocked(j)&&!out[j]){interiorNb=true;break;}
+    }
+    if(!interiorNb) return false;
+  }
+  return true;
+}
+
 // ---------- axa timpului (progresul simularii + curba acoperirii) ----------
 const TL=document.getElementById('tl'),tctx=TL.getContext('2d');
 let hist=[];
@@ -753,7 +780,14 @@ function drawTimeline(done){
 }
 
 function startRun(){
-  if(!countAC()){document.getElementById('msg').textContent='Alege „Unitate AC” și pune-o pe un perete.';return;}
+  const msgEl=document.getElementById('msg');
+  if(!countAC()){msgEl.classList.remove('warn');msgEl.textContent='Alege „Unitate AC” și pune-o pe un perete.';return;}
+  if(!enclosureOK()){
+    msgEl.classList.add('warn');
+    msgEl.textContent='⚠ Spațiul nu e închis ermetic — aerul rece se pierde în exterior. Închide pereții/geamurile în jurul unității AC (fără găuri spre afară) și apoi rulează.';
+    return;
+  }
+  msgEl.classList.remove('warn');
   stopRun(false);
   const P=readParams(); lastP=P;
   sim=buildSim(2,P,ITERS_LIVE); simTime=0; running=true;
