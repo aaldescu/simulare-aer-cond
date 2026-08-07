@@ -62,6 +62,7 @@
       <div id="loader"><div class="spin"></div><div class="lt" id="loaderTxt">Se pregătește simularea…</div></div>
       <div class="legend">
         <span>Cald</span><div class="grad"></div><span>Rece</span>
+        <span style="margin-left:10px">⟶ curenți de aer (lungimea = viteza)</span>
       </div>
       <div id="tlwrap" style="display:none;margin-top:8px">
         <canvas id="tl" width="720" height="72"></canvas>
@@ -506,6 +507,7 @@ function buildSim(sf,P,iters){
     return m;
   }
   return {step,toDraw,coverage,hottest,T,N,solarW,inMask:inM,units:units.length,acct,
+          u,v,S,simW:W,simH:H,sf,
           get duty(){return lastDuty;}};
 }
 
@@ -847,8 +849,42 @@ function draw(){
   for(let i=0;i<grid.length;i++)if(grid[i]===AC){
     drawAC(i%COLS,(i/COLS|0));
   }
+  drawFlow();
   drawCompass();
   drawDimensions();
+}
+// sageti din campul de viteze rezolvat: directia curgerii, lungimea ∝ viteza
+function drawFlow(){
+  if(!sim||!temp)return;
+  const sf=sim.sf,W=sim.simW,H=sim.simH,step=2;   // o sageata la 2×2 celule de desen
+  ctx.strokeStyle='rgba(15,23,42,.5)';ctx.fillStyle='rgba(15,23,42,.5)';
+  ctx.lineWidth=1;
+  for(let gy=0;gy<ROWS;gy+=step)for(let gx=0;gx<COLS;gx+=step){
+    let su=0,sv=0,c=0;
+    for(let b=0;b<step*sf;b++)for(let a=0;a<step*sf;a++){
+      const x=gx*sf+a,y=gy*sf+b;
+      if(x>=W||y>=H)continue;
+      const j=y*W+x;
+      if(sim.S[j]||!sim.inMask[j])continue;
+      su+=sim.u[j];sv+=sim.v[j];c++;
+    }
+    if(!c)continue;
+    su/=c;sv/=c;
+    const sp=Math.hypot(su,sv);
+    if(sp<0.015)continue;                     // aer practic nemiscat — fara sageata
+    const cx=(gx+step/2)*CELL,cy=(gy+step/2)*CELL;
+    // scalare radicala: si recircularea lenta (~0,05 m/s) ramane vizibila
+    const len=4+12*Math.min(1,Math.sqrt(sp/1.2));
+    const nx=su/sp,ny=sv/sp;
+    const x0=cx-nx*len/2,y0=cy-ny*len/2,x1=cx+nx*len/2,y1=cy+ny*len/2;
+    ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.stroke();
+    const ah=3.4;
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.lineTo(x1-nx*ah-ny*ah*0.6,y1-ny*ah+nx*ah*0.6);
+    ctx.lineTo(x1-nx*ah+ny*ah*0.6,y1-ny*ah-nx*ah*0.6);
+    ctx.closePath();ctx.fill();
+  }
 }
 // suprafata utila = celule de aer inchise (nu cele din exteriorul planului)
 function interiorArea(){
