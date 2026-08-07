@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulare răcire apartament</title>
+<style>
+  :root{
+    --bg:#f8fafc; --panel:#ffffff; --panel2:#f1f5f9; --line:#e2e8f0;
+    --text:#0f172a; --muted:#64748b; --accent:#0284c7; --accent2:#0ea5e9;
+    --warm:#f97316; --wall:#334155;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    background:var(--bg);color:var(--text);padding:16px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 16px}
+  .wrap{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+  .canvasbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+  canvas{display:block;background:#eef2f7;border-radius:8px;cursor:crosshair;touch-action:none;border:1px solid var(--line)}
+  .side{flex:1;min-width:260px;max-width:340px;display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 10px}
+  .tools{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .tool{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:8px;cursor:pointer;font-size:13px;user-select:none}
+  .tool.active{border-color:var(--accent);background:#e0f2fe}
+  .sw{width:14px;height:14px;border-radius:3px;flex:none}
+  .btn{width:100%;padding:10px;border:none;border-radius:8px;background:var(--accent2);color:#001018;
+    font-weight:600;cursor:pointer;font-size:14px;margin-top:6px}
+  .btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+  .row{display:flex;gap:8px}
+  label.slab{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  input[type=range]{width:100%}
+  .stat{display:flex;justify-content:space-between;font-size:14px;padding:6px 0;border-bottom:1px solid var(--line)}
+  .stat:last-child{border:none}
+  .big{font-size:28px;font-weight:700}
+  .cov-good{color:#4ade80}.cov-mid{color:#facc15}.cov-bad{color:#f87171}
+  .legend{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-top:8px}
+  .grad{height:12px;flex:1;border-radius:6px;
+    background:linear-gradient(90deg,#0ea5e9,#38bdf8,#a7f3d0,#fef08a,#f97316)}
+  .hint{font-size:12px;color:var(--muted);line-height:1.5}
+  select,input[type=number]{width:100%;padding:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+  .canvasbox{position:relative}
+  #loader{position:absolute;inset:12px;background:rgba(248,250,252,.82);backdrop-filter:blur(2px);
+    border-radius:8px;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:5}
+  #loader.on{display:flex}
+  .spin{width:42px;height:42px;border:4px solid #cbd5e1;border-top-color:var(--accent2);
+    border-radius:50%;animation:sp .8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  #loader .lt{color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+  <h1>Simulare răcire apartament</h1>
+  <p class="sub">Desenează planul, pune unitatea de AC și vezi ce zone se răcesc. Trage cu mausul ca să desenezi.</p>
+
+  <div class="wrap">
+    <div class="canvasbox">
+      <canvas id="cv" width="720" height="480"></canvas>
+      <div id="loader"><div class="spin"></div><div class="lt" id="loaderTxt">Se pregătește simularea…</div></div>
+      <div class="legend">
+        <span>Cald</span><div class="grad"></div><span>Rece</span>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <h2>Unealtă</h2>
+        <div class="tools" id="tools">
+          <div class="tool active" data-t="wall"><span class="sw" style="background:#334155;border:1px solid #94a3b8"></span>Perete</div>
+          <div class="tool" data-t="erase"><span class="sw" style="background:#eef2f7;border:1px dashed #94a3b8"></span>Șterge</div>
+          <div class="tool" data-t="door"><span class="sw" style="background:#b45309"></span>Ușă</div>
+          <div class="tool" data-t="window"><span class="sw" style="background:#38bdf8"></span>Fereastră</div>
+          <div class="tool" data-t="ac"><span class="sw" style="background:#38bdf8"></span>Unitate AC</div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn ghost" id="clear">Golește tot</button>
+          <button class="btn ghost" id="demo">Exemplu</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Setări AC & mediu</h2>
+        <div class="grid2">
+          <div><label class="slab">Putere AC (BTU)</label>
+            <select id="btu">
+              <option value="9000">9.000</option>
+              <option value="12000">12.000</option>
+              <option value="18000">18.000</option>
+              <option value="24000">24.000</option>
+            </select></div>
+          <div><label class="slab">Temp. setată (°C)</label>
+            <select id="setT">
+              <option value="18">18</option><option value="20">20</option>
+              <option value="22">22</option><option value="24">24</option>
+            </select></div>
+          <div><label class="slab">Ventilator</label>
+            <select id="fan">
+              <option value="sleep">Sleep</option>
+              <option value="medium">Medium</option>
+              <option value="max">Max</option>
+            </select></div>
+          <div><label class="slab">Temp. afară (°C)</label>
+            <select id="outT">
+              <option value="25">25</option><option value="30">30</option>
+              <option value="35">35</option><option value="40">40</option>
+            </select></div>
+          <div><label class="slab">Ora</label>
+            <select id="hour">
+              <option value="morning">Dimineața (E)</option>
+              <option value="noon">Prânz (S)</option>
+              <option value="afternoon">După-amiaza (V)</option>
+              <option value="night">Seara/noaptea</option>
+            </select></div>
+          <div><label class="slab">Nordul e spre</label>
+            <select id="north">
+              <option value="up">Sus</option><option value="right">Dreapta</option>
+              <option value="down">Jos</option><option value="left">Stânga</option>
+            </select></div>
+          <div><label class="slab">Scară (m/celulă)</label>
+            <select id="scale">
+              <option value="0.25">0,25</option><option value="0.33">0,33</option>
+              <option value="0.4">0,40</option><option value="0.5">0,50</option>
+            </select></div>
+          <div><label class="slab">Înălțime tavan (m)</label>
+            <input type="number" id="height" value="2.6" min="2" max="4" step="0.1"></div>
+        </div>
+        <label class="slab">Prag confort: temp. setată + <span id="thV">2</span>°C</label>
+        <input type="range" id="th" min="1" max="6" value="2">
+        <button class="btn" id="run" style="margin-top:12px">▶ Rulează simularea</button>
+        <button class="btn ghost" id="auto" style="margin-top:8px">✨ Găsește poziția optimă pentru AC</button>
+      </div>
+
+      <div class="card">
+        <h2>Rezultat</h2>
+        <div class="stat"><span>Dimensiuni (L × l)</span><span id="dim">–</span></div>
+        <div class="stat"><span>Suprafață geometrică</span><span id="area">–</span></div>
+        <div class="stat"><span>Volum de aer</span><span id="vol">–</span></div>
+        <div class="stat"><span>Acoperire confort</span><span class="big" id="cov">–</span></div>
+        <div class="stat"><span>Cel mai cald colț</span><span id="hot">–</span></div>
+        <div class="stat"><span>Camere neacoperite</span><span id="rooms">–</span></div>
+        <p class="hint" id="msg">Pune cel puțin o unitate AC și apasă „Rulează”.</p>
+      </div>
+    </div>
+  </div>
+
+<script>
+const CV=document.getElementById('cv'),ctx=CV.getContext('2d');
+const COLS=48,ROWS=32,CELL=15;            // grid
+const EMPTY=0,WALL=1,DOOR=2,WIN=3,AC=4;
+let grid=new Uint8Array(COLS*ROWS);
+let temp=null;                            // simulare
+let tool='wall',drawing=false,eraseVal=EMPTY;
+let colorSet=24,colorAmb=35;             // repere pentru colorare (temp setata / afara)
+const idx=(x,y)=>y*COLS+x;
+
+// ---------- interactiune ----------
+document.getElementById('tools').addEventListener('click',e=>{
+  const t=e.target.closest('.tool');if(!t)return;
+  tool=t.dataset.t;
+  document.querySelectorAll('.tool').forEach(el=>el.classList.toggle('active',el===t));
+});
+function cellFromEvent(ev){
+  const r=CV.getBoundingClientRect();
+  const px=(ev.touches?ev.touches[0].clientX:ev.clientX)-r.left;
+  const py=(ev.touches?ev.touches[0].clientY:ev.clientY)-r.top;
+  return [Math.floor(px/ (r.width/COLS)),Math.floor(py/(r.height/ROWS))];
+}
+function paint(x,y){
+  if(x<0||y<0||x>=COLS||y>=ROWS)return;
+  let v = tool==='wall'?WALL:tool==='door'?DOOR:tool==='window'?WIN:tool==='ac'?AC:EMPTY;
+  if(v===AC && !isWallAdjacent(x,y)){
+    document.getElementById('msg').textContent='Unitatea de AC se montează pe perete — pune-o pe o celulă lipită de un perete.';
+    return;
+  }
+  grid[idx(x,y)]=v; temp=null; draw();
+}
+function down(ev){ev.preventDefault();drawing=true;const[c,r]=cellFromEvent(ev);paint(c,r);}
+function move(ev){if(!drawing)return;ev.preventDefault();const[c,r]=cellFromEvent(ev);paint(c,r);}
+function up(){drawing=false;}
+CV.addEventListener('mousedown',down);CV.addEventListener('mousemove',move);
+window.addEventListener('mouseup',up);
+CV.addEventListener('touchstart',down,{passive:false});
+CV.addEventListener('touchmove',move,{passive:false});
+window.addEventListener('touchend',up);
+
+// ---------- MOTORUL FIZIC (JS) ----------
+// 1) Distanta efectiva a aerului rece de la unitate (Dijkstra prin aer; usi = gatuire).
+// 2) Raza de suflare (lambda) depinde de ventilator SI de cat de "incapatoare" e
+//    unitatea in BTU fata de sarcina termica = suprafata*(temp_afara - temp_setata) + soare.
+// 3) Soarele intra prin ferestrele orientate spre el (ora -> directie, + punctele cardinale).
+//    Temp = temp_afara - racire(distanta) + caldura_ferestre;  minim = temp setata.
+function scaleM(){return +document.getElementById('scale').value;}   // metri / celula
+const FAN_REACH={sleep:7, medium:12, max:18};   // raza de baza (celule)
+const SUN_CARD={morning:1, noon:2, afternoon:3, night:-1}; // 0=N 1=E 2=S 3=V
+const SUN_INT ={morning:0.75, noon:1.0, afternoon:0.9, night:0};
+const NORTH_IDX={up:0, right:1, down:2, left:3};
+
+function readParams(){
+  const g=id=>document.getElementById(id).value;
+  return {btu:+g('btu'),setT:+g('setT'),fan:g('fan'),outT:+g('outT'),
+          hour:g('hour'),north:g('north'),height:+g('height')||2.6,
+          thr:+document.getElementById('th').value};
+}
+// vector ecran (sus=0,dreapta=1,jos=2,stanga=3) -> busola 0N/1E/2S/3V
+function screenToCardinal(dx,dy,north){
+  const s = dx>0?1 : dx<0?3 : dy>0?2 : 0;
+  return ((s-NORTH_IDX[north])%4+4)%4;
+}
+// in ce directie e "afara" pentru o fereastra: interiorul = latura de unde
+// vine aerul din camera (accesibila); afara = latura opusa.
+function windowOutNormal(x,y,reach){
+  for(const[dx,dy]of [[1,0],[-1,0],[0,1],[0,-1]]){
+    const nx=x+dx,ny=y+dy; if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;
+    const j=idx(nx,ny);
+    if(grid[j]!==WALL&&grid[j]!==WIN&&reach(j)) return [-dx,-dy];
+  }
+  // fallback: spre cea mai apropiata margine a planului
+  const toEdge=[x,COLS-1-x,y,ROWS-1-y], mi=toEdge.indexOf(Math.min(...toEdge));
+  return [[-1,0],[1,0],[0,-1],[0,1]][mi];
+}
+
+function simulate(acCells,P){
+  const INF=1e9, N=COLS*ROWS;
+  const dist=new Float32Array(N).fill(INF);
+  const pq=[]; for(const a of acCells){dist[a]=0;pq.push([0,a]);}
+  while(pq.length){
+    pq.sort((p,q)=>p[0]-q[0]);
+    const [d,i]=pq.shift(); if(d>dist[i])continue;
+    const x=i%COLS,y=(i/COLS|0);
+    for(const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
+      if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;
+      const j=idx(nx,ny); if(grid[j]===WALL||grid[j]===WIN)continue; // geamul inchis blocheaza aerul
+      let w=1; if(grid[j]===DOOR||grid[i]===DOOR)w=3;   // gatuire prin usa
+      const nd=d+w; if(nd<dist[j]){dist[j]=nd;pq.push([nd,j]);}
+    }
+  }
+  // suprafata racita
+  const CELL_AREA=scaleM()*scaleM();
+  let cells=0; for(let i=0;i<N;i++) if(dist[i]<INF&&grid[i]!==WALL&&grid[i]!==WIN) cells++;
+  const area=Math.max(1,cells*CELL_AREA);
+  // soare prin ferestre
+  const sun=SUN_CARD[P.hour], heat=new Float32Array(N); let solarBTU=0;
+  const reach=j=>dist[j]<INF;
+  for(let i=0;i<N;i++) if(grid[i]===WIN){
+    const x=i%COLS,y=(i/COLS|0);
+    const nrm=windowOutNormal(x,y,reach), card=screenToCardinal(nrm[0],nrm[1],P.north);
+    let f=0.15;
+    if(sun>=0){ if(card===sun)f=1; else if((card+1)%4===sun||(card+3)%4===sun)f=0.4; }
+    const gain=f*SUN_INT[P.hour]*(P.outT/30);
+    solarBTU += f*SUN_INT[P.hour]*600;
+    for(let dx=-4;dx<=4;dx++)for(let dy=-4;dy<=4;dy++){
+      const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;
+      heat[idx(nx,ny)] += Math.max(0, gain*3.5*(1-Math.hypot(dx,dy)/5));
+    }
+  }
+  // adecvarea BTU la sarcina termica -> raza efectiva (tine cont de volumul de aer)
+  const dT=Math.max(0,P.outT-P.setT), Hf=(P.height||2.6)/2.6;
+  const need=area*Hf*(120+18*dT)+solarBTU;
+  const adequacy=P.btu/need;
+  const lambda=FAN_REACH[P.fan]*Math.min(1.5,Math.max(0.4,Math.sqrt(adequacy)));
+  const amb=P.outT, delta=amb-P.setT;
+  const T=new Float32Array(N);
+  for(let i=0;i<N;i++){
+    if(grid[i]===WALL||grid[i]===WIN){T[i]=NaN;continue;}
+    const cool = dist[i]<INF ? delta*Math.exp(-dist[i]/lambda) : 0;
+    let t=amb-cool+Math.min(heat[i],6); if(t<P.setT)t=P.setT;
+    T[i]=t;
+  }
+  return {T,amb,set:P.setT,adequacy,need,lambda};
+}
+
+// ---------- loader ----------
+function showLoader(t){const l=document.getElementById('loader');
+  document.getElementById('loaderTxt').textContent=t||'Se pregătește simularea…';l.classList.add('on');}
+function hideLoader(){document.getElementById('loader').classList.remove('on');}
+
+function run(withLoader=true){
+  const acCells=[];for(let i=0;i<grid.length;i++)if(grid[i]===AC)acCells.push(i);
+  if(!acCells.length){document.getElementById('msg').textContent='Alege „Unitate AC” și pune-o pe un perete.';return;}
+  const P=readParams();
+  const go=()=>{const r=simulate(acCells,P);temp=r.T;colorSet=r.set;colorAmb=r.amb;draw();stats(P,r);hideLoader();};
+  if(withLoader){showLoader('Se pregătește simularea…');setTimeout(go,350);} else go();
+}
+function stats(P,r){
+  const warm=P.setT+P.thr;
+  let inside=0,total=0,hottest=-99;
+  for(let i=0;i<grid.length;i++){
+    if(isNaN(temp[i])||grid[i]===WALL||grid[i]===WIN)continue;
+    total++; if(temp[i]<=warm)inside++; if(temp[i]>hottest)hottest=temp[i];
+  }
+  const pct=total?Math.round(100*inside/total):0;
+  const cov=document.getElementById('cov');
+  cov.textContent=pct+'%';
+  cov.className='big '+(pct>=80?'cov-good':pct>=55?'cov-mid':'cov-bad');
+  document.getElementById('hot').textContent=hottest.toFixed(1)+' °C';
+  document.getElementById('rooms').textContent=countColdRooms(warm);
+  let m;
+  if(r.adequacy<0.7) m='Unitatea e subdimensionată pentru suprafață — mărește BTU sau răcești doar camera ei.';
+  else if(pct>=80) m='Bun — acoperă apartamentul la setările astea.';
+  else if(pct>=55) m='Parțial. Deschide ușile, treci ventilatorul pe Max sau coboară temp. setată.';
+  else m='Slab. Camere închise/departe nu se răcesc — uși deschise sau multisplit.';
+  document.getElementById('msg').textContent=m+` (necesar ≈ ${(r.need/1000).toFixed(1)}k BTU, ai ${(P.btu/1000)}k)`;
+}
+// zone de aer separate care raman calde
+function countColdRooms(warm){
+  const seen=new Uint8Array(grid.length);let warmR=0,coldR=0;
+  for(let s=0;s<grid.length;s++){
+    if(seen[s]||grid[s]===WALL||grid[s]===WIN)continue;
+    let q=[s],warmCells=0,cells=0;seen[s]=1;
+    while(q.length){
+      const i=q.pop();cells++;
+      if(temp&&!isNaN(temp[i])&&temp[i]>warm)warmCells++;
+      const x=i%COLS,y=(i/COLS|0);
+      for(const[nx,ny]of[[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
+        if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;const j=idx(nx,ny);
+        if(seen[j]||grid[j]===WALL||grid[j]===WIN)continue;seen[j]=1;q.push(j);
+      }
+    }
+    if(cells>6){ if(warmCells/cells>0.5)warmR++; else coldR++; }
+  }
+  return warmR+' / '+(warmR+coldR);
+}
+
+// ---------- auto pozitionare ----------
+function autoPlace(){
+  const P=readParams();
+  for(let i=0;i<grid.length;i++)if(grid[i]===AC)grid[i]=EMPTY;
+  const candidates=[];
+  for(let i=0;i<grid.length;i++)if(grid[i]===EMPTY){
+    const x=i%COLS,y=(i/COLS|0); if(isWallAdjacent(x,y))candidates.push(i);
+  }
+  if(!candidates.length){document.getElementById('msg').textContent='Desenează întâi pereți — unitatea se montează pe un perete.';return;}
+  showLoader('Caut poziția optimă…');
+  setTimeout(()=>{
+    const warm=P.setT+P.thr; let best=-1,bestScore=-1;
+    for(const c of candidates){
+      const r=simulate([c],P);
+      let inside=0,total=0;
+      for(let i=0;i<grid.length;i++){
+        if(isNaN(r.T[i])||grid[i]===WALL||grid[i]===WIN)continue;
+        total++; if(r.T[i]<=warm)inside++;
+      }
+      const score=total?inside/total:0;
+      if(score>bestScore){bestScore=score;best=c;}
+    }
+    if(best>=0){grid[best]=AC;run(false);
+      document.getElementById('msg').textContent='Poziția optimă găsită — acoperire maximă cu o singură unitate la setările curente.';}
+    hideLoader();
+  },400);
+}
+
+// ---------- simboluri arhitecturale ----------
+function isWall(x,y){return x>=0&&y>=0&&x<COLS&&y<ROWS&&grid[idx(x,y)]===WALL;}
+function isWallAdjacent(x,y){return isWall(x-1,y)||isWall(x+1,y)||isWall(x,y-1)||isWall(x,y+1);}
+function drawAC(x,y){
+  const cx=x*CELL,cy=y*CELL;
+  let side=isWall(x,y-1)?'top':isWall(x,y+1)?'bottom':isWall(x-1,y)?'left':isWall(x+1,y)?'right':'top';
+  ctx.fillStyle='#0ea5e9';ctx.strokeStyle='#075985';ctx.lineWidth=1;
+  let bx,by,bw,bh;
+  if(side==='top'){bx=cx+1;by=cy+1;bw=CELL-2;bh=CELL*0.45;}
+  else if(side==='bottom'){bx=cx+1;by=cy+CELL*0.55;bw=CELL-2;bh=CELL*0.45-1;}
+  else if(side==='left'){bx=cx+1;by=cy+1;bw=CELL*0.45;bh=CELL-2;}
+  else {bx=cx+CELL*0.55;by=cy+1;bw=CELL*0.45-1;bh=CELL-2;}
+  ctx.fillRect(bx,by,bw,bh);ctx.strokeRect(bx+0.5,by+0.5,bw-1,bh-1);
+  // fanta de suflare (linie deschisa)
+  ctx.strokeStyle='#e0f2fe';ctx.lineWidth=1.2;ctx.beginPath();
+  if(side==='top'||side==='bottom'){const ly=side==='top'?by+bh-1.5:by+1.5;ctx.moveTo(bx+1.5,ly);ctx.lineTo(bx+bw-1.5,ly);}
+  else{const lx=side==='left'?bx+bw-1.5:bx+1.5;ctx.moveTo(lx,by+1.5);ctx.lineTo(lx,by+bh-1.5);}
+  ctx.stroke();
+}
+function isWallish(x,y){if(x<0||y<0||x>=COLS||y>=ROWS)return false;const v=grid[idx(x,y)];return v===WALL||v===WIN;}
+function arcQuarter(hx,hy,r,a0,a1){
+  let d=a1-a0;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;
+  ctx.beginPath();
+  for(let t=0;t<=1.001;t+=0.1){const a=a0+d*t,px=hx+r*Math.cos(a),py=hy+r*Math.sin(a);t===0?ctx.moveTo(px,py):ctx.lineTo(px,py);}
+  ctx.stroke();
+}
+function drawDoor(x,y){
+  const cx=x*CELL,cy=y*CELL;
+  const horiz=isWall(x-1,y)||isWall(x+1,y);   // peretele merge orizontal
+  ctx.strokeStyle='#b45309';ctx.lineWidth=1.5;ctx.fillStyle='#b45309';
+  if(horiz){
+    const wy=cy+CELL/2, roomUp=!isWall(x,y-1);
+    const hx=cx, hy=hx, hingeY=wy;                    // balamaua pe jamba stanga
+    const tipY=roomUp?wy-CELL:wy+CELL;
+    ctx.beginPath();ctx.moveTo(cx,wy);ctx.lineTo(cx,tipY);ctx.stroke();  // canat
+    const a0=Math.atan2(tipY-wy,0), a1=Math.atan2(wy-wy,(cx+CELL)-cx);
+    arcQuarter(cx,wy,CELL,a0,a1);                     // arc de deschidere
+    ctx.beginPath();ctx.arc(cx,wy,1.6,0,7);ctx.fill();
+  }else{
+    const wx=cx+CELL/2, roomLeft=!isWall(x-1,y);
+    const tipX=roomLeft?wx-CELL:wx+CELL;
+    ctx.beginPath();ctx.moveTo(wx,cy);ctx.lineTo(tipX,cy);ctx.stroke();
+    const a0=Math.atan2(0,tipX-wx), a1=Math.atan2((cy+CELL)-cy,0);
+    arcQuarter(wx,cy,CELL,a0,a1);
+    ctx.beginPath();ctx.arc(wx,cy,1.6,0,7);ctx.fill();
+  }
+}
+function drawWindow(x,y){
+  const cx=x*CELL,cy=y*CELL;
+  const horiz=isWallish(x-1,y)||isWallish(x+1,y);  // fereastra intr-un perete orizontal
+  ctx.fillStyle='#dbeafe';ctx.strokeStyle='#93c5fd';ctx.lineWidth=1;
+  if(horiz){
+    ctx.fillRect(cx,cy+CELL/2-3,CELL,6);
+    ctx.strokeStyle='#38bdf8';ctx.lineWidth=1.4;
+    ctx.beginPath();ctx.moveTo(cx,cy+CELL/2);ctx.lineTo(cx+CELL,cy+CELL/2);ctx.stroke();
+  }else{
+    ctx.fillRect(cx+CELL/2-3,cy,6,CELL);
+    ctx.strokeStyle='#38bdf8';ctx.lineWidth=1.4;
+    ctx.beginPath();ctx.moveTo(cx+CELL/2,cy);ctx.lineTo(cx+CELL/2,cy+CELL);ctx.stroke();
+  }
+}
+
+// ---------- desen ----------
+function draw(){
+  ctx.clearRect(0,0,CV.width,CV.height);
+  for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
+    const i=idx(x,y),g=grid[i];
+    let col='#f4f7fb';                       // aer / interior (usor albastrui)
+    if(g===WALL||g===WIN)col='#475569';      // pereti / cadru fereastra - slate
+    else if(temp&&!isNaN(temp[i]))col=tempColor(temp[i]);
+    ctx.fillStyle=col;ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+    if(g===DOOR)drawDoor(x,y);               // ușă arhitecturală (gol + arc)
+    if(g===WIN)drawWindow(x,y);              // fereastră (linie de geam în perete)
+  }
+  // grila fina
+  ctx.strokeStyle='rgba(15,23,42,.06)';ctx.lineWidth=1;
+  for(let x=0;x<=COLS;x++){ctx.beginPath();ctx.moveTo(x*CELL,0);ctx.lineTo(x*CELL,ROWS*CELL);ctx.stroke();}
+  for(let y=0;y<=ROWS;y++){ctx.beginPath();ctx.moveTo(0,y*CELL);ctx.lineTo(COLS*CELL,y*CELL);ctx.stroke();}
+  // unitati AC
+  for(let i=0;i<grid.length;i++)if(grid[i]===AC){
+    drawAC(i%COLS,(i/COLS|0));
+  }
+  drawCompass();
+  drawDimensions();
+}
+// suprafata utila = celule de aer inchise (nu cele din exteriorul planului)
+function interiorArea(){
+  // gabaritul desenului
+  let minX=COLS,minY=ROWS,maxX=-1,maxY=-1;
+  for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++) if(grid[idx(x,y)]!==EMPTY){
+    if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;
+  }
+  if(maxX<0)return 0;
+  // rezerva pe gabarit: tot aerul din interiorul dreptunghiului
+  let bboxAir=0;
+  for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++){
+    const g=grid[idx(x,y)]; if(g===EMPTY||g===DOOR||g===AC)bboxAir++;
+  }
+  // flood din margine — peretii, geamurile SI usile inchise opresc scurgerea
+  const seen=new Uint8Array(grid.length),q=[];
+  const blk=g=>g===WALL||g===WIN||g===DOOR;
+  const push=(x,y)=>{if(x<0||y<0||x>=COLS||y>=ROWS)return;const j=idx(x,y);
+    if(!seen[j]&&!blk(grid[j])){seen[j]=1;q.push(j);}};
+  for(let x=0;x<COLS;x++){push(x,0);push(x,ROWS-1);}
+  for(let y=0;y<ROWS;y++){push(0,y);push(COLS-1,y);}
+  while(q.length){const i=q.pop(),x=i%COLS,y=(i/COLS|0);
+    push(x+1,y);push(x-1,y);push(x,y+1);push(x,y-1);}
+  let enclosed=0;for(let i=0;i<grid.length;i++){const g=grid[i];
+    if((g===EMPTY||g===DOOR||g===AC)&&!seen[i])enclosed++;}
+  // daca planul e deschis (scurgere mare), foloseste gabaritul
+  return enclosed>=0.4*bboxAir ? enclosed : bboxAir;
+}
+function dimLine(ax,ay,bx,by){
+  const tk=4;ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke();
+  ctx.beginPath();
+  if(ay===by){ctx.moveTo(ax,ay-tk);ctx.lineTo(ax,ay+tk);ctx.moveTo(bx,by-tk);ctx.lineTo(bx,by+tk);}
+  else{ctx.moveTo(ax-tk,ay);ctx.lineTo(ax+tk,ay);ctx.moveTo(bx-tk,by);ctx.lineTo(bx+tk,by);}
+  ctx.stroke();
+}
+function drawDimensions(){
+  let minX=COLS,minY=ROWS,maxX=-1,maxY=-1;
+  for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++) if(grid[idx(x,y)]!==EMPTY){
+    if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;
+  }
+  const dimEl=document.getElementById('dim'),areaEl=document.getElementById('area'),volEl=document.getElementById('vol');
+  if(maxX<0){if(dimEl)dimEl.textContent='–';if(areaEl)areaEl.textContent='–';if(volEl)volEl.textContent='–';return;}
+  const m=scaleM(), hgt=+document.getElementById('height').value||2.6;
+  const wM=(maxX-minX+1)*m, hM=(maxY-minY+1)*m, areaM=interiorArea()*m*m, volM=areaM*hgt;
+  const x0=minX*CELL,x1=(maxX+1)*CELL,y0=minY*CELL,y1=(maxY+1)*CELL;
+  ctx.strokeStyle='#0f172a';ctx.fillStyle='#0f172a';ctx.lineWidth=1;
+  ctx.font='11px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  // cota lungime (sus)
+  const ty=Math.max(9,y0-11);
+  dimLine(x0,ty,x1,ty);
+  ctx.fillStyle='#fff';ctx.fillRect((x0+x1)/2-24,ty-8,48,12);
+  ctx.fillStyle='#0f172a';ctx.fillText(wM.toFixed(2)+' m',(x0+x1)/2,ty-1);
+  // cota latime (stanga)
+  const lx=Math.max(9,x0-11);
+  dimLine(lx,y0,lx,y1);
+  ctx.save();ctx.translate(lx-1,(y0+y1)/2);ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='#fff';ctx.fillRect(-24,-8,48,12);
+  ctx.fillStyle='#0f172a';ctx.fillText(hM.toFixed(2)+' m',0,-1);ctx.restore();
+  if(dimEl)dimEl.textContent=wM.toFixed(1)+' × '+hM.toFixed(1)+' m';
+  if(areaEl)areaEl.textContent='≈ '+areaM.toFixed(1)+' m²';
+  if(volEl)volEl.textContent='≈ '+volM.toFixed(1)+' m³';
+}
+function drawCompass(){
+  const north=document.getElementById('north').value, hour=document.getElementById('hour').value;
+  const cxp=COLS*CELL-26, cyp=26, R=15;
+  ctx.fillStyle='rgba(255,255,255,.9)';ctx.strokeStyle='#94a3b8';ctx.lineWidth=1;
+  ctx.beginPath();ctx.arc(cxp,cyp,R+4,0,7);ctx.fill();ctx.stroke();
+  const vec={up:[0,-1],right:[1,0],down:[0,1],left:[-1,0]}[north];
+  ctx.strokeStyle='#ef4444';ctx.fillStyle='#ef4444';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(cxp,cyp);ctx.lineTo(cxp+vec[0]*R,cyp+vec[1]*R);ctx.stroke();
+  ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('N',cxp+vec[0]*(R+8),cyp+vec[1]*(R+8));
+  const sun=SUN_CARD[hour];
+  if(sun>=0){
+    for(const d of [[0,-1],[1,0],[0,1],[-1,0]]) if(screenToCardinal(d[0],d[1],north)===sun){
+      ctx.fillStyle='#f59e0b';
+      ctx.beginPath();ctx.arc(cxp+d[0]*(R-4),cyp+d[1]*(R-4),3.5,0,7);ctx.fill();break;
+    }
+  }
+}
+function tempColor(t){
+  // temp afara = cald(portocaliu) ... temp setata = rece(albastru)
+  const span=Math.max(1,colorAmb-colorSet);
+  const p=Math.max(0,Math.min(1,(colorAmb-t)/span)); // 0 cald -> 1 rece
+  const stops=[[249,115,22],[254,240,138],[167,243,208],[56,189,248],[14,165,233]];
+  const f=p*(stops.length-1),k=Math.floor(f),frac=f-k;
+  const a=stops[k],b=stops[Math.min(k+1,stops.length-1)];
+  const c=a.map((v,j)=>Math.round(v+(b[j]-v)*frac));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+
+// ---------- exemplu ----------
+function demo(){
+  grid=new Uint8Array(COLS*ROWS);
+  // contur
+  for(let x=4;x<44;x++){grid[idx(x,4)]=WALL;grid[idx(x,27)]=WALL;}
+  for(let y=4;y<28;y++){grid[idx(4,y)]=WALL;grid[idx(43,y)]=WALL;}
+  // pereti interiori: 2 dormitoare in stanga
+  for(let y=4;y<16;y++)grid[idx(18,y)]=WALL;
+  for(let x=4;x<18;x++)grid[idx(x,16)]=WALL;
+  for(let x=4;x<18;x++)grid[idx(x,16)]=WALL;
+  grid[idx(18,10)]=DOOR;             // usa dormitor 1
+  grid[idx(11,16)]=DOOR;             // usa dormitor 2
+  // ferestre
+  grid[idx(4,8)]=WIN;grid[idx(4,9)]=WIN;
+  grid[idx(43,20)]=WIN;grid[idx(43,21)]=WIN;
+  grid[idx(30,4)]=WIN;grid[idx(31,4)]=WIN;
+  // AC in living, montat pe peretele din dreapta
+  grid[idx(42,8)]=AC;
+  temp=null;draw();
+  document.getElementById('msg').textContent='Exemplu încărcat: 2 dormitoare + living. Apasă „Rulează”.';
+}
+
+document.getElementById('run').onclick=run;
+document.getElementById('auto').onclick=autoPlace;
+document.getElementById('clear').onclick=()=>{grid=new Uint8Array(COLS*ROWS);temp=null;draw();
+  document.getElementById('cov').textContent='–';document.getElementById('msg').textContent='Plan gol.';};
+document.getElementById('demo').onclick=demo;
+const th=document.getElementById('th');
+th.oninput=()=>{document.getElementById('thV').textContent=th.value;if(temp)run(false);};
+// re-ruleaza la schimbarea oricarei setari
+['btu','setT','fan','outT','hour','north','scale'].forEach(id=>{
+  document.getElementById(id).addEventListener('change',()=>{if(temp)run(false);else draw();});
+});
+document.getElementById('height').addEventListener('input',()=>{if(temp)run(false);else draw();});
+
+// presetari (raspunsurile tale)
+function preset(id,v){document.getElementById(id).value=v;}
+preset('btu','9000');preset('setT','24');preset('fan','sleep');
+preset('outT','35');preset('hour','afternoon');preset('north','up');preset('scale','0.33');
+document.getElementById('thV').textContent=document.getElementById('th').value;
+
+demo();
+</script>
+</body>
+</html>
