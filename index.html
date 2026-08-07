@@ -67,6 +67,16 @@
   .filerow{display:flex;gap:8px;align-items:center}
   .filerow input[type=file]{font-size:12px}
   .field-lock{opacity:.6}
+  /* layout pe toata latimea: planul creste, panoul lateral ramane fix */
+  .canvasbox{flex:1 1 520px;min-width:0}
+  #cv{width:100%;height:auto;aspect-ratio:3/2;max-height:calc(100vh - 130px);margin:0 auto}
+  #tl{width:100%;height:auto}
+  .zoomctl{position:absolute;left:20px;top:20px;display:flex;gap:4px;z-index:4}
+  .zoomctl button{width:30px;height:30px;border:1px solid var(--line);background:rgba(255,255,255,.92);
+    border-radius:7px;cursor:pointer;font-size:15px;font-weight:700;color:var(--text);line-height:1;
+    display:flex;align-items:center;justify-content:center}
+  .zoomctl button:hover{background:#e0f2fe;border-color:var(--accent)}
+  .zoomctl .zlvl{width:auto;padding:0 8px;font-size:12px;font-weight:600;color:var(--muted);cursor:default}
 </style>
 </head>
 <body>
@@ -81,9 +91,15 @@
   <div class="wrap">
     <div class="canvasbox">
       <canvas id="cv" width="720" height="480"></canvas>
+      <div class="zoomctl">
+        <button id="zin" title="Apropie (rotița mouse-ului)">＋</button>
+        <button id="zout" title="Depărtează">－</button>
+        <span class="zlvl" id="zlvl">100%</span>
+        <button id="zfit" title="Încadrează la loc">⤢</button>
+      </div>
       <div id="loader"><div class="spin"></div><div class="lt" id="loaderTxt">Se pregătește simularea…</div></div>
       <div class="legend">
-        <span>Cald</span><div class="grad"></div><span>Rece</span>
+        <span>Rece</span><div class="grad"></div><span>Cald</span>
         <span style="margin-left:10px">⟶ curenți de aer (lungimea = viteza)</span>
       </div>
       <div id="tlwrap" style="display:none;margin-top:8px">
@@ -241,6 +257,29 @@ let tool='wall',drawing=false;
 let colorSet=24,colorAmb=35;              // repere pentru colorare (temp setata / afara)
 const idx=(x,y)=>y*COLS+x;
 
+// ---------- zoom & pan ----------
+let zoom=1,panX=0,panY=0;
+function clampPan(){
+  panX=Math.min(0,Math.max(CV.width*(1-zoom),panX));
+  panY=Math.min(0,Math.max(CV.height*(1-zoom),panY));
+}
+function updateZoomLabel(){const el=document.getElementById('zlvl');if(el)el.textContent=Math.round(zoom*100)+'%';}
+function zoomAt(ix,iy,factor){
+  const nz=Math.min(6,Math.max(1,zoom*factor));
+  const gx=(ix-panX)/zoom, gy=(iy-panY)/zoom;   // punctul de sub cursor, in coord. interne
+  zoom=nz; panX=ix-gx*zoom; panY=iy-gy*zoom;    // il pastram fix sub cursor
+  clampPan();updateZoomLabel();draw();
+}
+function zoomCenter(factor){zoomAt(CV.width/2,CV.height/2,factor);}
+function zoomFit(){zoom=1;panX=0;panY=0;updateZoomLabel();draw();}
+// coordonate client -> interne (720×480), tinand cont de scalarea CSS
+function clientToInternal(ev){
+  const r=CV.getBoundingClientRect();
+  const cx=(ev.touches?ev.touches[0].clientX:ev.clientX)-r.left;
+  const cy=(ev.touches?ev.touches[0].clientY:ev.clientY)-r.top;
+  return [cx*(CV.width/r.width), cy*(CV.height/r.height)];
+}
+
 // ---------- interactiune ----------
 document.getElementById('tools').addEventListener('click',e=>{
   const t=e.target.closest('.tool');if(!t)return;
@@ -248,10 +287,9 @@ document.getElementById('tools').addEventListener('click',e=>{
   document.querySelectorAll('.tool').forEach(el=>el.classList.toggle('active',el===t));
 });
 function cellFromEvent(ev){
-  const r=CV.getBoundingClientRect();
-  const px=(ev.touches?ev.touches[0].clientX:ev.clientX)-r.left;
-  const py=(ev.touches?ev.touches[0].clientY:ev.clientY)-r.top;
-  return [Math.floor(px/ (r.width/COLS)),Math.floor(py/(r.height/ROWS))];
+  const [ix,iy]=clientToInternal(ev);
+  const gx=(ix-panX)/zoom, gy=(iy-panY)/zoom;   // din coord. interne in coord. de grila (px)
+  return [Math.floor(gx/CELL),Math.floor(gy/CELL)];
 }
 function paint(x,y){
   if(x<0||y<0||x>=COLS||y>=ROWS)return;
@@ -264,11 +302,30 @@ function paint(x,y){
   setTempBtn(false); syncControls();
   grid[idx(x,y)]=v; draw();
 }
-function down(ev){ev.preventDefault();drawing=true;const[c,r]=cellFromEvent(ev);paint(c,r);}
-function move(ev){if(!drawing)return;ev.preventDefault();const[c,r]=cellFromEvent(ev);paint(c,r);}
-function up(){drawing=false;}
+// panoramare cu butonul drept / mijloc; desenare cu butonul stang
+let panning=false,plx=0,ply=0;
+function down(ev){
+  if(ev.button===1||ev.button===2){ // buton mijloc/drept -> pan
+    panning=true;plx=ev.clientX;ply=ev.clientY;ev.preventDefault();return;
+  }
+  if(ev.button!==undefined&&ev.button!==0)return; // ignora alte butoane
+  ev.preventDefault();drawing=true;const[c,r]=cellFromEvent(ev);paint(c,r);
+}
+function move(ev){
+  if(panning){
+    const rc=CV.getBoundingClientRect();
+    panX+=(ev.clientX-plx)*(CV.width/rc.width);
+    panY+=(ev.clientY-ply)*(CV.height/rc.height);
+    plx=ev.clientX;ply=ev.clientY;clampPan();draw();return;
+  }
+  if(!drawing)return;ev.preventDefault();const[c,r]=cellFromEvent(ev);paint(c,r);
+}
+function up(){drawing=false;panning=false;}
 CV.addEventListener('mousedown',down);CV.addEventListener('mousemove',move);
 window.addEventListener('mouseup',up);
+CV.addEventListener('contextmenu',e=>e.preventDefault());
+CV.addEventListener('wheel',ev=>{ev.preventDefault();const[ix,iy]=clientToInternal(ev);
+  zoomAt(ix,iy,ev.deltaY<0?1.12:1/1.12);},{passive:false});
 CV.addEventListener('touchstart',down,{passive:false});
 CV.addEventListener('touchmove',move,{passive:false});
 window.addEventListener('touchend',up);
@@ -957,7 +1014,9 @@ function drawWindow(x,y){
 
 // ---------- desen ----------
 function draw(){
+  ctx.setTransform(1,0,0,1,0,0);
   ctx.clearRect(0,0,CV.width,CV.height);
+  ctx.setTransform(zoom,0,0,zoom,panX,panY);   // aplica zoom/pan pentru tot desenul
   // fundal: in editor, poza planului sub grila (celulele de aer raman transparente)
   if(editorMode&&planPhotoImg){
     ctx.save();ctx.globalAlpha=(+document.getElementById('opacity').value||0)/100;
@@ -1243,9 +1302,12 @@ function setView(v){
     ? 'Editor de plan: încarcă poza apartamentului, desenează peste ea pereți/uși/ferestre/AC și salvează planul. Se folosește apoi în simulator.'
     : 'Desenează planul, pune unitatea de AC și privește simularea fizică (CFD) în timp real.';
   if(editorMode)stopRun(false);
-  draw();
+  zoomFit();   // fiecare vedere porneste incadrata
 }
 $('menubar').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setView(b.dataset.view);});
+$('zin').onclick=()=>zoomCenter(1.25);
+$('zout').onclick=()=>zoomCenter(0.8);
+$('zfit').onclick=zoomFit;
 
 // --- unealta in editor (acelasi `tool` global) ---
 $('etools').addEventListener('click',e=>{
