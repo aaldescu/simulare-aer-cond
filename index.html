@@ -69,7 +69,8 @@
   .field-lock{opacity:.6}
   /* layout pe toata latimea: planul creste, panoul lateral ramane fix */
   .canvasbox{flex:1 1 520px;min-width:0}
-  #cv{width:100%;height:auto;aspect-ratio:3/2;max-height:calc(100vh - 130px);margin:0 auto}
+  /* pastreaza strict raportul 3:2 (altfel busola iese ovala); limiteaza prin latime */
+  #cv{width:100%;height:auto;aspect-ratio:3/2;max-width:calc((100vh - 140px) * 1.5);margin:0 auto}
   #tl{width:100%;height:auto}
 </style>
 </head>
@@ -1374,7 +1375,8 @@ async function savePlan(){
   if(!hasGeom){setMsg('Desenează cel puțin pereții planului.');return;}
   const payload={name,cols:COLS,rows:ROWS,grid:gridToStr(grid),
     north:+$('eNorth').value||0,height:+$('eHeight').value||2.6,scale:+$('eScale').value||0.33,
-    photo:planPhotoData||null};
+    photo:planPhotoData||null,
+    photo_scale:photoScale,photo_x:photoX,photo_y:photoY};  // pozitia/marimea pozei
   try{
     const saved=currentPlanId?await apiUpdate(currentPlanId,payload):await apiCreate(payload);
     currentPlanId=saved.id;
@@ -1388,7 +1390,11 @@ async function editPlan(id){
     grid=strToGrid(p.grid);currentPlanId=p.id;
     $('eName').value=p.name;$('eNorth').value=p.north;
     $('eHeight').value=p.height;$('eScale').value=String(p.scale);
-    setPhoto(p.photo||null);$('photoInput').value='';
+    setPhoto(p.photo||null);$('photoInput').value='';   // resetează transformarea
+    if(p.photo){                                          // apoi o readuce unde ai lăsat-o
+      photoScale=p.photo_scale||1;photoX=p.photo_x||0;photoY=p.photo_y||0;
+      $('photoZoom').value=Math.round(photoScale*100);$('pzV').textContent=$('photoZoom').value;
+    }
     setMsg(`Editez „${p.name}”. Modifică și salvează.`);
     draw();refreshPlans();
   }catch(err){setMsg('Eroare la încărcare: '+err.message);}

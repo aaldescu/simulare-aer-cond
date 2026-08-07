@@ -28,6 +28,16 @@ db.exec(`
   );
 `);
 
+// migrare: coloanele de transformare a pozei (mărime + poziție), ca la reeditare
+// poza să revină exact unde ai lăsat-o
+function ensureColumn(name, def) {
+  const cols = db.prepare(`PRAGMA table_info(plans)`).all().map(c => c.name);
+  if (!cols.includes(name)) db.exec(`ALTER TABLE plans ADD COLUMN ${name} ${def}`);
+}
+ensureColumn('photo_scale', 'REAL NOT NULL DEFAULT 1');
+ensureColumn('photo_x', 'REAL NOT NULL DEFAULT 0');
+ensureColumn('photo_y', 'REAL NOT NULL DEFAULT 0');
+
 // dataURL "data:image/png;base64,...." <-> {buf, mime}
 function decodePhoto(dataUrl) {
   if (!dataUrl) return { buf: null, mime: null };
@@ -62,12 +72,15 @@ export function createPlan(p) {
   const now = new Date().toISOString();
   const { buf, mime } = decodePhoto(p.photo);
   const info = db.prepare(`
-    INSERT INTO plans (name, cols, rows, grid, north, height, scale, photo, photo_mime, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO plans (name, cols, rows, grid, north, height, scale, photo, photo_mime,
+      photo_scale, photo_x, photo_y, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     p.name, p.cols, p.rows, p.grid,
     p.north ?? 0, p.height ?? 2.6, p.scale ?? 0.33,
-    buf, mime, now, now
+    buf, mime,
+    p.photo_scale ?? 1, p.photo_x ?? 0, p.photo_y ?? 0,
+    now, now
   );
   return getPlan(Number(info.lastInsertRowid));
 }
@@ -84,11 +97,13 @@ export function updatePlan(id, p) {
   }
   db.prepare(`
     UPDATE plans SET name=?, cols=?, rows=?, grid=?, north=?, height=?, scale=?,
-      photo=?, photo_mime=?, updated_at=? WHERE id=?
+      photo=?, photo_mime=?, photo_scale=?, photo_x=?, photo_y=?, updated_at=? WHERE id=?
   `).run(
     p.name ?? cur.name, p.cols ?? cur.cols, p.rows ?? cur.rows, p.grid ?? cur.grid,
     p.north ?? cur.north, p.height ?? cur.height, p.scale ?? cur.scale,
-    buf, mime, now, id
+    buf, mime,
+    p.photo_scale ?? cur.photo_scale, p.photo_x ?? cur.photo_x, p.photo_y ?? cur.photo_y,
+    now, id
   );
   return getPlan(id);
 }
