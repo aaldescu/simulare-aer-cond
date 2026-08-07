@@ -195,7 +195,7 @@
           <input type="checkbox" id="photoTop"> Poză deasupra desenului
         </label>
         <button class="btn ghost" id="photoReset" style="margin-top:8px">↺ Resetează poziția pozei</button>
-        <p class="hint" style="margin:8px 0 0">Mărește poza din slider (sau cu rotița) și trage-o cu butonul drept al mausului ca s-o aliniezi la grilă. Apoi desenează peste ea.</p>
+        <p class="hint" style="margin:8px 0 0">Mărește poza din slider (sau cu rotița). Ca s-o muți, alege unealta <b>✋ Mută poza</b> și trage cu mausul (sau ține apăsat butonul drept). Apoi desenează peste ea.</p>
       </div>
 
       <div class="card">
@@ -206,6 +206,7 @@
           <div class="tool" data-t="door"><span class="sw" style="background:#b45309"></span>Ușă</div>
           <div class="tool" data-t="window"><span class="sw" style="background:#38bdf8"></span>Fereastră</div>
           <div class="tool" data-t="ac"><span class="sw" style="background:#38bdf8"></span>Unitate AC</div>
+          <div class="tool" data-t="pan"><span class="sw" style="background:#e2e8f0;border:1px solid #94a3b8"></span>✋ Mută poza</div>
         </div>
         <button class="btn ghost" id="eclear" style="margin-top:10px">Golește desenul</button>
       </div>
@@ -275,6 +276,7 @@ function cellFromEvent(ev){
   return [Math.floor(ix/CELL),Math.floor(iy/CELL)];
 }
 function paint(x,y){
+  if(tool==='pan')return;                 // unealta de mutat poza nu modifica grila
   if(x<0||y<0||x>=COLS||y>=ROWS)return;
   let v = tool==='wall'?WALL:tool==='door'?DOOR:tool==='window'?WIN:tool==='ac'?AC:EMPTY;
   if(v===AC && !isWallAdjacent(x,y)){
@@ -285,26 +287,33 @@ function paint(x,y){
   setTempBtn(false); syncControls();
   grid[idx(x,y)]=v; draw();
 }
-// pan pentru POZĂ cu butonul drept / mijloc (în editor); desenare cu stânga
+// mutarea POZEI: unealta „✋ Mută poza” (buton stang) sau butonul drept/mijloc
 let panning=false,plx=0,ply=0;
+function evXY(ev){return ev.touches&&ev.touches[0]?[ev.touches[0].clientX,ev.touches[0].clientY]:[ev.clientX,ev.clientY];}
+function startPan(ev){const[x,y]=evXY(ev);panning=true;plx=x;ply=y;}
 function down(ev){
-  if(ev.button===1||ev.button===2){ // buton mijloc/drept -> mută poza
-    if(editorMode&&planPhotoImg){panning=true;plx=ev.clientX;ply=ev.clientY;}
+  if(ev.button===1||ev.button===2){ // buton mijloc/drept -> mută poza (scurtătură)
+    if(editorMode&&planPhotoImg)startPan(ev);
     ev.preventDefault();return;
   }
   if(ev.button!==undefined&&ev.button!==0)return; // ignora alte butoane
-  ev.preventDefault();drawing=true;const[c,r]=cellFromEvent(ev);paint(c,r);
+  ev.preventDefault();
+  if(editorMode&&tool==='pan'){                    // unealta de mutat poza
+    if(planPhotoImg){startPan(ev);CV.style.cursor='grabbing';}
+    return;
+  }
+  drawing=true;const[c,r]=cellFromEvent(ev);paint(c,r);
 }
 function move(ev){
   if(panning){
-    const rc=CV.getBoundingClientRect();
-    photoX+=(ev.clientX-plx)*(CV.width/rc.width);
-    photoY+=(ev.clientY-ply)*(CV.height/rc.height);
-    plx=ev.clientX;ply=ev.clientY;draw();return;
+    const rc=CV.getBoundingClientRect();const[x,y]=evXY(ev);
+    photoX+=(x-plx)*(CV.width/rc.width);
+    photoY+=(y-ply)*(CV.height/rc.height);
+    plx=x;ply=y;draw();return;
   }
   if(!drawing)return;ev.preventDefault();const[c,r]=cellFromEvent(ev);paint(c,r);
 }
-function up(){drawing=false;panning=false;}
+function up(){drawing=false;panning=false;if(editorMode&&tool==='pan')CV.style.cursor='grab';}
 CV.addEventListener('mousedown',down);CV.addEventListener('mousemove',move);
 window.addEventListener('mouseup',up);
 CV.addEventListener('contextmenu',e=>e.preventDefault());
@@ -1302,6 +1311,10 @@ function setView(v){
     ? 'Editor de plan: încarcă poza apartamentului, desenează peste ea pereți/uși/ferestre/AC și salvează planul. Se folosește apoi în simulator.'
     : 'Desenează planul, pune unitatea de AC și privește simularea fizică (CFD) în timp real.';
   if(editorMode)stopRun(false);
+  // la iesirea din editor cu unealta „Mută poza” activa, revin la desenat
+  if(!editorMode&&tool==='pan'){tool='wall';
+    document.querySelectorAll('#tools .tool').forEach(el=>el.classList.toggle('active',el.dataset.t==='wall'));}
+  CV.style.cursor=(editorMode&&tool==='pan')?'grab':'crosshair';
   draw();
 }
 $('menubar').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setView(b.dataset.view);});
@@ -1313,6 +1326,7 @@ $('etools').addEventListener('click',e=>{
   const t=e.target.closest('.tool');if(!t)return;
   tool=t.dataset.t;
   $('etools').querySelectorAll('.tool').forEach(el=>el.classList.toggle('active',el===t));
+  CV.style.cursor=tool==='pan'?'grab':'crosshair';
 });
 
 // --- poza de fundal ---
