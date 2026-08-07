@@ -54,7 +54,7 @@
 </head>
 <body>
   <h1>Simulare răcire apartament</h1>
-  <p class="sub">Desenează planul, pune unitatea de AC și vezi ce zone se răcesc. Trage cu mausul ca să desenezi.</p>
+  <p class="sub">Desenează planul, pune unitatea de AC și privește simularea fizică (CFD) în timp real: jetul de aer rece, curgerea prin uși, căldura de la soare și pereți.</p>
 
   <div class="wrap">
     <div class="canvasbox">
@@ -148,12 +148,13 @@
 
 <script>
 const CV=document.getElementById('cv'),ctx=CV.getContext('2d');
-const COLS=48,ROWS=32,CELL=15;            // grid
+const COLS=48,ROWS=32,CELL=15;            // grila de desen
 const EMPTY=0,WALL=1,DOOR=2,WIN=3,AC=4;
 let grid=new Uint8Array(COLS*ROWS);
-let temp=null;                            // simulare
-let tool='wall',drawing=false,eraseVal=EMPTY;
-let colorSet=24,colorAmb=35;             // repere pentru colorare (temp setata / afara)
+let temp=null;                            // temperatura pe grila de desen (pentru colorare/statistici)
+let interiorDraw=null;                    // masca: celula de desen e in interiorul apartamentului
+let tool='wall',drawing=false;
+let colorSet=24,colorAmb=35;              // repere pentru colorare (temp setata / afara)
 const idx=(x,y)=>y*COLS+x;
 
 // ---------- interactiune ----------
@@ -175,7 +176,8 @@ function paint(x,y){
     document.getElementById('msg').textContent='Unitatea de AC se montează pe perete — pune-o pe o celulă lipită de un perete.';
     return;
   }
-  grid[idx(x,y)]=v; temp=null; draw();
+  stopRun(false); temp=null; interiorDraw=null;
+  grid[idx(x,y)]=v; draw();
 }
 function down(ev){ev.preventDefault();drawing=true;const[c,r]=cellFromEvent(ev);paint(c,r);}
 function move(ev){if(!drawing)return;ev.preventDefault();const[c,r]=cellFromEvent(ev);paint(c,r);}
@@ -186,17 +188,33 @@ CV.addEventListener('touchstart',down,{passive:false});
 CV.addEventListener('touchmove',move,{passive:false});
 window.addEventListener('touchend',up);
 
-// ---------- MOTORUL FIZIC (JS) ----------
-// 1) Distanta efectiva a aerului rece de la unitate (Dijkstra prin aer; usi = gatuire).
-// 2) Raza de suflare (lambda) depinde de ventilator SI de cat de "incapatoare" e
-//    unitatea in BTU fata de sarcina termica = suprafata*(temp_afara - temp_setata) + soare.
-// 3) Soarele intra prin ferestrele orientate spre el (ora -> directie, + punctele cardinale).
-//    Temp = temp_afara - racire(distanta) + caldura_ferestre;  minim = temp setata.
-function scaleM(){return +document.getElementById('scale').value;}   // metri / celula
-const FAN_REACH={sleep:7, medium:12, max:18};   // raza de baza (celule)
+// ---------- MOTORUL FIZIC: CFD "stable fluids" ----------
+// Curgere incompresibila in plan (advectie semi-Lagrangiana + proiectie de presiune,
+// metoda Jos Stam) cuplata cu transportul caldurii:
+//  - campul de viteze e REZOLVAT: AC injecteaza un jet, aerul ocoleste peretii,
+//    se strecoara prin usi, iar proiectia de presiune impune conservarea masei
+//    (aerul care pleaca de la unitate se intoarce — recirculare);
+//  - temperatura e advectata de curgere + difuzie turbulenta;
+//  - conductie prin anvelopa (U perete / U geam), aport solar prin ferestrele
+//    orientate spre soare, exteriorul e rezervor la temp. de afara;
+//  - AC = jet de aer rece cu buget de energie: extractia de caldura pe pas e
+//    plafonata de puterea in W (BTU) si de debitul ventilatorului, cu termostat
+//    (compresorul isi reduce sarcina cand aerul de retur atinge temp. setata).
+// Frana de frecare (podea+tavan) inlocuieste dimensiunea verticala absenta;
+// flotabilitatea nu apare in vedere de sus, deci nu e modelata.
+function scaleM(){return +document.getElementById('scale').value;}   // metri / celula de desen
 const SUN_CARD={morning:1, noon:2, afternoon:3, night:-1}; // 0=N 1=E 2=S 3=V
 const SUN_INT ={morning:0.75, noon:1.0, afternoon:0.9, night:0};
 const NORTH_IDX={up:0, right:1, down:2, left:3};
+
+const RHO_C=1206;            // J/(m^3·K) capacitatea termica volumetrica a aerului
+const U_WALL=0.8, U_WIN=2.8; // W/(m^2·K) transmitanta perete exterior / geam
+const SOLAR_WM=300;          // W pe metru de fereastra insorita (dupa geam/umbrire)
+const ALPHA_T=0.005;         // m^2/s difuzie turbulenta a temperaturii
+const DRAG=0.35;             // 1/s frecare cu podea+tavan (media pe verticala)
+const FAN_VEL={sleep:1.2, medium:2.2, max:3.2};    // m/s viteza jetului
+const FAN_KGS={sleep:0.10, medium:0.16, max:0.24}; // kg/s debit de aer
+const BTU_TO_W=0.293;
 
 function readParams(){
   const g=id=>document.getElementById(id).value;
@@ -209,67 +227,283 @@ function screenToCardinal(dx,dy,north){
   const s = dx>0?1 : dx<0?3 : dy>0?2 : 0;
   return ((s-NORTH_IDX[north])%4+4)%4;
 }
-// in ce directie e "afara" pentru o fereastra: interiorul = latura de unde
-// vine aerul din camera (accesibila); afara = latura opusa.
-function windowOutNormal(x,y,reach){
-  for(const[dx,dy]of [[1,0],[-1,0],[0,1],[0,-1]]){
-    const nx=x+dx,ny=y+dy; if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;
-    const j=idx(nx,ny);
-    if(grid[j]!==WALL&&grid[j]!==WIN&&reach(j)) return [-dx,-dy];
-  }
-  // fallback: spre cea mai apropiata margine a planului
-  const toEdge=[x,COLS-1-x,y,ROWS-1-y], mi=toEdge.indexOf(Math.min(...toEdge));
-  return [[-1,0],[1,0],[0,-1],[0,1]][mi];
-}
 
-function simulate(acCells,P){
-  const INF=1e9, N=COLS*ROWS;
-  const dist=new Float32Array(N).fill(INF);
-  const pq=[]; for(const a of acCells){dist[a]=0;pq.push([0,a]);}
-  while(pq.length){
-    pq.sort((p,q)=>p[0]-q[0]);
-    const [d,i]=pq.shift(); if(d>dist[i])continue;
-    const x=i%COLS,y=(i/COLS|0);
-    for(const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
-      if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;
-      const j=idx(nx,ny); if(grid[j]===WALL||grid[j]===WIN)continue; // geamul inchis blocheaza aerul
-      let w=1; if(grid[j]===DOOR||grid[i]===DOOR)w=3;   // gatuire prin usa
-      const nd=d+w; if(nd<dist[j]){dist[j]=nd;pq.push([nd,j]);}
+// construieste un solver pe subgrila sf× (sf=2 pentru rulare, sf=1 pentru cautare)
+function buildSim(sf,P,iters){
+  const W=COLS*sf,H=ROWS*sf,N=W*H;
+  const h=scaleM()/sf;                    // metri / subcelula
+  const cellC=RHO_C*h*h*P.height;         // J/K per subcelula (coloana de aer)
+  const si=(x,y)=>y*W+x;
+  const S=new Uint8Array(N);              // 1 = solid (perete / geam)
+  const out=new Uint8Array(N);            // 1 = aer exterior
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const g=grid[idx((x/sf|0),(y/sf|0))];
+    if(g===WALL||g===WIN)S[si(x,y)]=1;
+  }
+  // exteriorul: flood fill de la marginile planului
+  {const st=[];
+   const pu=(x,y)=>{if(x<0||y<0||x>=W||y>=H)return;const j=si(x,y);
+     if(!out[j]&&!S[j]){out[j]=1;st.push(j);}};
+   for(let x=0;x<W;x++){pu(x,0);pu(x,H-1);}
+   for(let y=0;y<H;y++){pu(0,y);pu(W-1,y);}
+   while(st.length){const i=st.pop(),x=i%W,y=(i/W|0);pu(x+1,y);pu(x-1,y);pu(x,y+1);pu(x,y-1);}}
+  const inM=new Uint8Array(N);let nIn=0;
+  for(let i=0;i<N;i++)if(!S[i]&&!out[i]){inM[i]=1;nIn++;}
+  const DIRS=[[1,0],[-1,0],[0,1],[0,-1]];
+  // cai de conductie: celula interioara lipita de un solid prin care se ajunge afara
+  const cond=[],maxTh=2*sf+1;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const i=si(x,y); if(S[i]||out[i])continue;
+    for(const[dx,dy]of DIRS){
+      let nx=x+dx,ny=y+dy;
+      if(nx<0||ny<0||nx>=W||ny>=H)continue;
+      if(!S[si(nx,ny)])continue;
+      let win=false,steps=0,hit=false;
+      while(steps<maxTh){
+        if(nx<0||ny<0||nx>=W||ny>=H){hit=true;break;}
+        const j=si(nx,ny);
+        if(!S[j]){hit=out[j]===1;break;}
+        if(grid[idx((nx/sf|0),(ny/sf|0))]===WIN)win=true;
+        nx+=dx;ny+=dy;steps++;
+      }
+      if(hit)cond.push([i,(win?U_WIN:U_WALL)*h*P.height]);
     }
   }
-  // suprafata racita
-  const CELL_AREA=scaleM()*scaleM();
-  let cells=0; for(let i=0;i<N;i++) if(dist[i]<INF&&grid[i]!==WALL&&grid[i]!==WIN) cells++;
-  const area=Math.max(1,cells*CELL_AREA);
-  // soare prin ferestre
-  const sun=SUN_CARD[P.hour], heat=new Float32Array(N); let solarBTU=0;
-  const reach=j=>dist[j]<INF;
-  for(let i=0;i<N;i++) if(grid[i]===WIN){
-    const x=i%COLS,y=(i/COLS|0);
-    const nrm=windowOutNormal(x,y,reach), card=screenToCardinal(nrm[0],nrm[1],P.north);
-    let f=0.15;
-    if(sun>=0){ if(card===sun)f=1; else if((card+1)%4===sun||(card+3)%4===sun)f=0.4; }
-    const gain=f*SUN_INT[P.hour]*(P.outT/30);
-    solarBTU += f*SUN_INT[P.hour]*600;
-    for(let dx=-4;dx<=4;dx++)for(let dy=-4;dy<=4;dy++){
-      const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;
-      heat[idx(nx,ny)] += Math.max(0, gain*3.5*(1-Math.hypot(dx,dy)/5));
+  // aport solar: ferestrele din anvelopa orientate spre soare incalzesc fasia din spatele lor
+  const sun=SUN_CARD[P.hour],solar=[];let solarW=0;
+  if(sun>=0){
+    for(let gy=0;gy<ROWS;gy++)for(let gx=0;gx<COLS;gx++){
+      if(grid[idx(gx,gy)]!==WIN)continue;
+      let od=null;
+      for(const[dx,dy]of DIRS){
+        const nx=gx+dx,ny=gy+dy;
+        let isOut;
+        if(nx<0||ny<0||nx>=COLS||ny>=ROWS)isOut=true;
+        else isOut=out[si(nx*sf+(sf>>1),ny*sf+(sf>>1))]===1;
+        if(isOut){od=[dx,dy];break;}
+      }
+      if(!od)continue;
+      const card=screenToCardinal(od[0],od[1],P.north);
+      let f=0.15; if(card===sun)f=1; else if((card+1)%4===sun||(card+3)%4===sun)f=0.4;
+      const Pw=f*SUN_INT[P.hour]*SOLAR_WM*scaleM();
+      if(Pw<=0)continue;
+      solarW+=Pw;
+      const inx=-od[0],iny=-od[1],cellsList=[];
+      for(let d=1;d<=5*sf;d++)for(let l=-2*sf;l<=2*sf;l++){
+        const sx=gx*sf+(sf>>1)+inx*d+(iny!==0?l:0),
+              sy=gy*sf+(sf>>1)+iny*d+(inx!==0?l:0);
+        if(sx<0||sy<0||sx>=W||sy>=H)continue;
+        const j=si(sx,sy); if(!S[j]&&!out[j])cellsList.push(j);
+      }
+      for(const c of cellsList)solar.push([c,Pw/cellsList.length]);
     }
   }
-  // adecvarea BTU la sarcina termica -> raza efectiva (tine cont de volumul de aer)
-  const dT=Math.max(0,P.outT-P.setT), Hf=(P.height||2.6)/2.6;
-  const need=area*Hf*(120+18*dT)+solarBTU;
-  const adequacy=P.btu/need;
-  const lambda=FAN_REACH[P.fan]*Math.min(1.5,Math.max(0.4,Math.sqrt(adequacy)));
-  const amb=P.outT, delta=amb-P.setT;
-  const T=new Float32Array(N);
-  for(let i=0;i<N;i++){
-    if(grid[i]===WALL||grid[i]===WIN){T[i]=NaN;continue;}
-    const cool = dist[i]<INF ? delta*Math.exp(-dist[i]/lambda) : 0;
-    let t=amb-cool+Math.min(heat[i],6); if(t<P.setT)t=P.setT;
-    T[i]=t;
+  // unitatile AC: fata de suflare (impuls) + zona de schimb termic din fata
+  // unitatii (acolo se masoara returul si se extrage caldura — curgerea
+  // rezolvata aduce mereu aer cald in zona, iar jetul il duce racit mai departe)
+  const units=[];
+  for(let gy=0;gy<ROWS;gy++)for(let gx=0;gx<COLS;gx++){
+    if(grid[idx(gx,gy)]!==AC)continue;
+    const dir=isWall(gx,gy-1)?[0,1]:isWall(gx,gy+1)?[0,-1]:isWall(gx-1,gy)?[1,0]:isWall(gx+1,gy)?[-1,0]:[0,1];
+    const cells=[];
+    for(let a=0;a<sf;a++){
+      let sx,sy;
+      if(dir[1]===1){sx=gx*sf+a;sy=gy*sf+sf-1;}
+      else if(dir[1]===-1){sx=gx*sf+a;sy=gy*sf;}
+      else if(dir[0]===1){sx=gx*sf+sf-1;sy=gy*sf+a;}
+      else{sx=gx*sf;sy=gy*sf+a;}
+      const j=si(sx,sy); if(!S[j])cells.push(j);
+    }
+    const patch=[],lane=[];
+    const cx0=gx*sf+(sf>>1),cy0=gy*sf+(sf>>1);
+    for(let d=0;d<3*sf;d++)for(let l=-2*sf;l<=2*sf;l++){
+      const sx=cx0+dir[0]*d+(dir[1]!==0?l:0),
+            sy=cy0+dir[1]*d+(dir[0]!==0?l:0);
+      if(sx<0||sy<0||sx>=W||sy>=H)continue;
+      const j=si(sx,sy); if(!S[j]&&!out[j])patch.push(j);
+    }
+    // culoarul jetului: aici se aplica forta ventilatorului (nu viteza direct —
+    // o viteza impusa pe cateva celule ar fi anulata de proiectia de presiune;
+    // o forta continua pe un culoar intretine o recirculare la scara camerei)
+    for(let d=0;d<5*sf;d++)for(let l=-(sf>>1);l<=(sf>>1);l++){
+      const sx=cx0+dir[0]*d+(dir[1]!==0?l:0),
+            sy=cy0+dir[1]*d+(dir[0]!==0?l:0);
+      if(sx<0||sy<0||sx>=W||sy>=H)continue;
+      const j=si(sx,sy); if(!S[j]&&!out[j])lane.push(j);
+    }
+    if(cells.length)units.push({cells,dir,patch:patch.length?patch:cells,
+                                lane:lane.length?lane:cells});
   }
-  return {T,amb,set:P.setT,adequacy,need,lambda};
+  // termostatul simte aerul camerei (returul dupa amestecare), nu propriul jet:
+  // fiecare unitate primeste zona de aer conectata la ea (flood fill prin usi)
+  for(const un of units){
+    const room=[],seen=new Uint8Array(N),st=[un.patch[0]];
+    seen[un.patch[0]]=1;
+    while(st.length){
+      const i=st.pop(); room.push(i);
+      const x=i%W,y=(i/W|0);
+      for(const[dx,dy]of DIRS){
+        const nx=x+dx,ny=y+dy;
+        if(nx<0||ny<0||nx>=W||ny>=H)continue;
+        const j=si(nx,ny);
+        if(seen[j]||S[j]||out[j])continue;
+        seen[j]=1;st.push(j);
+      }
+    }
+    un.room=room.length?room:un.patch;
+  }
+
+  const u=new Float32Array(N),v=new Float32Array(N),T=new Float32Array(N).fill(P.outT);
+  const u0=new Float32Array(N),v0=new Float32Array(N),T0=new Float32Array(N);
+  const p=new Float32Array(N),div=new Float32Array(N);
+  const BTU_W=P.btu*BTU_TO_W, vjet=FAN_VEL[P.fan], mdot=FAN_KGS[P.fan];
+  const Tsup=Math.max(8,P.setT-12);
+  let lastDuty=0;
+  const acct={extractJ:0,condJ:0,solarJ:0,t:0};   // bilant energetic (diagnoza+UI)
+
+  function advect(dst,src,dt){
+    const s=dt/h;
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+      const i=si(x,y);
+      if(S[i]){dst[i]=src[i];continue;}
+      // traseul inapoi e parcurs in pasi mici si taiat la primul perete —
+      // altfel un salt lung ar "strapunge" zidul si ar aduce aer de afara
+      const dxT=-u[i]*s, dyT=-v[i]*s;
+      const nsub=Math.max(1,Math.ceil(Math.max(Math.abs(dxT),Math.abs(dyT))));
+      const ddx=dxT/nsub, ddy=dyT/nsub;
+      let gx=x, gy=y;
+      for(let k=0;k<nsub;k++){
+        const tx=Math.max(0,Math.min(W-1.001,gx+ddx));
+        const ty=Math.max(0,Math.min(H-1.001,gy+ddy));
+        if(S[si(Math.round(tx),Math.round(ty))])break;
+        gx=tx; gy=ty;
+      }
+      const x0=gx|0,y0=gy|0,fx=gx-x0,fy=gy-y0;
+      let ws=0,val=0;
+      for(let b=0;b<2;b++)for(let a=0;a<2;a++){
+        const j=si(x0+a,y0+b); if(S[j])continue;
+        const w=(a?fx:1-fx)*(b?fy:1-fy); ws+=w; val+=w*src[j];
+      }
+      dst[i]=ws>0.001?val/ws:src[i];
+    }
+  }
+  function project(){
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+      const i=si(x,y);
+      if(S[i]){div[i]=0;p[i]=0;continue;}
+      const uR=(x+1<W&&!S[si(x+1,y)])?u[si(x+1,y)]:0;
+      const uL=(x-1>=0&&!S[si(x-1,y)])?u[si(x-1,y)]:0;
+      const vD=(y+1<H&&!S[si(x,y+1)])?v[si(x,y+1)]:0;
+      const vU=(y-1>=0&&!S[si(x,y-1)])?v[si(x,y-1)]:0;
+      div[i]=0.5*(uR-uL+vD-vU); p[i]=0;
+    }
+    for(let k=0;k<iters;k++){
+      for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+        const i=si(x,y); if(S[i])continue;
+        let s=0,c=0;
+        if(x+1<W&&!S[si(x+1,y)]){s+=p[si(x+1,y)];c++;}
+        if(x-1>=0&&!S[si(x-1,y)]){s+=p[si(x-1,y)];c++;}
+        if(y+1<H&&!S[si(x,y+1)]){s+=p[si(x,y+1)];c++;}
+        if(y-1>=0&&!S[si(x,y-1)]){s+=p[si(x,y-1)];c++;}
+        p[i]=c?(s-div[i])/c:0;
+      }
+    }
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+      const i=si(x,y); if(S[i])continue;
+      const pR=(x+1<W&&!S[si(x+1,y)])?p[si(x+1,y)]:p[i];
+      const pL=(x-1>=0&&!S[si(x-1,y)])?p[si(x-1,y)]:p[i];
+      const pD=(y+1<H&&!S[si(x,y+1)])?p[si(x,y+1)]:p[i];
+      const pU=(y-1>=0&&!S[si(x,y-1)])?p[si(x,y-1)]:p[i];
+      u[i]-=0.5*(pR-pL); v[i]-=0.5*(pD-pU);
+    }
+  }
+  function step(dt){
+    // termostat + jet + extractie de caldura cu buget de energie
+    let dsum=0;
+    for(const un of units){
+      let sT=0;for(const j of un.room)sT+=T[j];sT/=un.room.length;
+      const duty=Math.max(0,Math.min(1,(sT-P.setT)/0.5)); dsum+=duty;
+      // forta de corp: la echilibru cu frecarea da viteza jetului (F = DRAG·v),
+      // dublata ca sa compenseze partea disipata de proiectia de presiune
+      const F=2*DRAG*vjet*dt;
+      for(const j of un.lane){u[j]+=un.dir[0]*F;v[j]+=un.dir[1]*F;}
+      const Q=Math.min(BTU_W,mdot*1005*Math.max(0,sT-Tsup))*duty;
+      let E=0;for(const j of un.patch)E+=cellC*Math.max(0,T[j]-Tsup);
+      if(E>0&&Q>0){
+        const k=Math.min(1,Q*dt/E);
+        for(const j of un.patch)T[j]-=k*Math.max(0,T[j]-Tsup);
+        acct.extractJ+=k*E;
+      }
+    }
+    lastDuty=units.length?dsum/units.length:0;
+    // conductie prin anvelopa + soare
+    for(const[c,ua]of cond){const q=dt*ua*(P.outT-T[c]);T[c]+=q/cellC;acct.condJ+=q;}
+    for(const[c,w]of solar){T[c]+=dt*w/cellC;acct.solarJ+=dt*w;}
+    acct.t+=dt;
+    // bilantul fazei de transport (difuzie+advectie nu au voie sa creeze/distruga energie)
+    let sumB=0;for(let i=0;i<N;i++)if(inM[i])sumB+=T[i];
+    // difuzie turbulenta a temperaturii (explicit, stabil la a<0.25)
+    const a=ALPHA_T*dt/(h*h);
+    T0.set(T);
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+      const i=si(x,y); if(S[i])continue;
+      let s=0,c=0;
+      if(x+1<W&&!S[si(x+1,y)]){s+=T0[si(x+1,y)];c++;}
+      if(x-1>=0&&!S[si(x-1,y)]){s+=T0[si(x-1,y)];c++;}
+      if(y+1<H&&!S[si(x,y+1)]){s+=T0[si(x,y+1)];c++;}
+      if(y-1>=0&&!S[si(x,y-1)]){s+=T0[si(x,y-1)];c++;}
+      if(c)T[i]=T0[i]+a*(s-c*T0[i]);
+    }
+    // advectia temperaturii de catre curgere
+    T0.set(T); advect(T,T0,dt);
+    // corectie de conservare: interiorul e etans prin constructie (orice
+    // spatiu conectat la margine e "exterior"), deci transportul trebuie sa
+    // pastreze exact energia interioara; reziduul numeric (divergenta ramasa
+    // dupa Gauss-Seidel, esantionarea langa pereti) se redistribuie uniform
+    if(nIn){
+      let sumA=0;for(let i=0;i<N;i++)if(inM[i])sumA+=T[i];
+      const corr=(sumB-sumA)/nIn;
+      for(let i=0;i<N;i++)if(inM[i])T[i]+=corr;
+    }
+    // frecare, advectia vitezei, proiectie de presiune (incompresibilitate)
+    const d=Math.exp(-DRAG*dt);
+    for(let i=0;i<N;i++){u[i]*=d;v[i]*=d;}
+    u0.set(u);v0.set(v);
+    advect(u,u0,dt); advect(v,v0,dt);
+    project();
+    // exteriorul e rezervor infinit la temp. de afara; solide fara viteza
+    const relax=Math.min(1,dt*0.5);
+    for(let i=0;i<N;i++){
+      if(S[i]){u[i]=0;v[i]=0;}
+      else if(out[i])T[i]+=(P.outT-T[i])*relax;
+    }
+  }
+  // reducere la grila de desen (medie pe subcelule) pentru colorare/statistici
+  function toDraw(tArr,inArr){
+    for(let gy=0;gy<ROWS;gy++)for(let gx=0;gx<COLS;gx++){
+      const gi=idx(gx,gy),g=grid[gi];
+      if(g===WALL||g===WIN){tArr[gi]=NaN;inArr[gi]=0;continue;}
+      let s=0,c=0,inC=0;
+      for(let b=0;b<sf;b++)for(let a=0;a<sf;a++){
+        const j=si(gx*sf+a,gy*sf+b); if(S[j])continue;
+        s+=T[j];c++; if(!out[j])inC++;
+      }
+      tArr[gi]=c?s/c:NaN;
+      inArr[gi]=(c&&inC>=c/2)?1:0;
+    }
+  }
+  function coverage(warmT){
+    let inC=0,tot=0;
+    for(let i=0;i<N;i++)if(!S[i]&&!out[i]){tot++;if(T[i]<=warmT)inC++;}
+    return tot?inC/tot:0;
+  }
+  function hottest(){
+    let m=-99;
+    for(let i=0;i<N;i++)if(!S[i]&&!out[i]&&T[i]>m)m=T[i];
+    return m;
+  }
+  return {step,toDraw,coverage,hottest,T,N,solarW,inMask:inM,units:units.length,acct,
+          get duty(){return lastDuty;}};
 }
 
 // ---------- loader ----------
@@ -277,38 +511,104 @@ function showLoader(t){const l=document.getElementById('loader');
   document.getElementById('loaderTxt').textContent=t||'Se pregătește simularea…';l.classList.add('on');}
 function hideLoader(){document.getElementById('loader').classList.remove('on');}
 
-function run(withLoader=true){
-  const acCells=[];for(let i=0;i<grid.length;i++)if(grid[i]===AC)acCells.push(i);
-  if(!acCells.length){document.getElementById('msg').textContent='Alege „Unitate AC” și pune-o pe un perete.';return;}
-  const P=readParams();
-  const go=()=>{const r=simulate(acCells,P);temp=r.T;colorSet=r.set;colorAmb=r.amb;draw();stats(P,r);hideLoader();};
-  if(withLoader){showLoader('Se pregătește simularea…');setTimeout(go,350);} else go();
+// ---------- rulare live ----------
+const DT=0.75, SUB=4;             // 4 pasi × 0,75 s pe cadru ≈ 180× timp real
+const SIM_MAX=5400;               // max 90 de minute simulate
+const ITERS_LIVE=26;
+let sim=null,simTime=0,running=false,animId=0,lastP=null;
+let snapT=null,snapTime=0;
+
+function countAC(){let n=0;for(let i=0;i<grid.length;i++)if(grid[i]===AC)n++;return n;}
+
+function startRun(){
+  if(!countAC()){document.getElementById('msg').textContent='Alege „Unitate AC” și pune-o pe un perete.';return;}
+  stopRun(false);
+  const P=readParams(); lastP=P;
+  sim=buildSim(2,P,ITERS_LIVE); simTime=0; running=true;
+  temp=new Float32Array(grid.length); interiorDraw=new Uint8Array(grid.length);
+  colorSet=P.setT; colorAmb=P.outT;
+  snapT=new Float32Array(sim.T); snapTime=0;
+  document.getElementById('run').textContent='■ Oprește simularea';
+  animId=requestAnimationFrame(loop);
 }
-function stats(P,r){
-  const warm=P.setT+P.thr;
-  let inside=0,total=0,hottest=-99;
-  for(let i=0;i<grid.length;i++){
-    if(isNaN(temp[i])||grid[i]===WALL||grid[i]===WIN)continue;
-    total++; if(temp[i]<=warm)inside++; if(temp[i]>hottest)hottest=temp[i];
+function loop(){
+  const P=lastP;
+  for(let k=0;k<SUB;k++){sim.step(DT);simTime+=DT;}
+  sim.toDraw(temp,interiorDraw); draw();
+  const cov=sim.coverage(P.setT+P.thr);
+  setCov(Math.round(cov*100));
+  document.getElementById('hot').textContent=sim.hottest().toFixed(1)+' °C';
+  const mm=Math.floor(simTime/60),ss=Math.round(simTime%60);
+  document.getElementById('msg').textContent=
+    `Simulare live: min ${mm}:${String(ss).padStart(2,'0')} — compresor la ${(sim.duty*100).toFixed(0)}%.`;
+  // convergenta: schimbarea medie a celulelor interioare pe ultimul minut simulat
+  let done=simTime>=SIM_MAX;
+  if(!done&&simTime-snapTime>=60){
+    let dsum=0,c=0;
+    for(let i=0;i<sim.T.length;i++)if(sim.inMask[i]){dsum+=Math.abs(sim.T[i]-snapT[i]);c++;}
+    if(simTime>300&&c&&dsum/c<0.03)done=true;
+    snapT.set(sim.T);snapTime=simTime;
   }
-  const pct=total?Math.round(100*inside/total):0;
+  if(done)finishRun(); else animId=requestAnimationFrame(loop);
+}
+function finishRun(){
+  running=false;animId=0;
+  document.getElementById('run').textContent='▶ Rulează simularea';
+  finalStats();
+}
+function stopRun(finalize=true){
+  if(animId){cancelAnimationFrame(animId);animId=0;}
+  if(running){
+    running=false;
+    document.getElementById('run').textContent='▶ Rulează simularea';
+    if(finalize&&sim)finalStats();
+  }
+}
+function setCov(pct){
   const cov=document.getElementById('cov');
   cov.textContent=pct+'%';
   cov.className='big '+(pct>=80?'cov-good':pct>=55?'cov-mid':'cov-bad');
+}
+function coverageFromTemp(warm){
+  let inC=0,tot=0;
+  for(let i=0;i<grid.length;i++){
+    if(!interiorDraw||!interiorDraw[i]||isNaN(temp[i]))continue;
+    tot++; if(temp[i]<=warm)inC++;
+  }
+  return tot?inC/tot:0;
+}
+function finalStats(){
+  const P=lastP; if(!P||!temp)return;
+  const warm=P.setT+P.thr;
+  const pct=Math.round(100*coverageFromTemp(warm));
+  setCov(pct);
+  let hottest=-99;
+  for(let i=0;i<grid.length;i++)
+    if(interiorDraw[i]&&!isNaN(temp[i])&&temp[i]>hottest)hottest=temp[i];
   document.getElementById('hot').textContent=hottest.toFixed(1)+' °C';
   document.getElementById('rooms').textContent=countColdRooms(warm);
-  let m;
-  if(r.adequacy<0.7) m='Unitatea e subdimensionată pentru suprafață — mărește BTU sau răcești doar camera ei.';
-  else if(pct>=80) m='Bun — acoperă apartamentul la setările astea.';
-  else if(pct>=55) m='Parțial. Deschide ușile, treci ventilatorul pe Max sau coboară temp. setată.';
-  else m='Slab. Camere închise/departe nu se răcesc — uși deschise sau multisplit.';
-  document.getElementById('msg').textContent=m+` (necesar ≈ ${(r.need/1000).toFixed(1)}k BTU, ai ${(P.btu/1000)}k)`;
+  // estimare de sarcina termica pentru recomandare (independenta de solver)
+  const m=scaleM(),A=interiorArea()*m*m,Hf=P.height/2.6;
+  const dT=Math.max(0,P.outT-P.setT);
+  const need=A*Hf*(120+18*dT)+(sim?sim.solarW*3.412:0);
+  const totBTU=P.btu*(sim?Math.max(1,sim.units):1);
+  const adequacy=totBTU/Math.max(1,need);
+  const mins=Math.round(simTime/60);
+  let msg;
+  if(pct>=80) msg='Bun — acoperă apartamentul la setările astea.';
+  else if(adequacy<0.7) msg='Unitatea e subdimensionată pentru suprafață — mărește BTU sau răcești doar camera ei.';
+  else if(pct>=55) msg='Parțial. Deschide ușile, treci ventilatorul pe Max sau coboară temp. setată.';
+  else msg='Slab. Camere închise/departe nu se răcesc — uși deschise sau multisplit.';
+  document.getElementById('msg').textContent=
+    `Echilibru după ~${mins} min simulate. `+msg+
+    ` (necesar ≈ ${(need/1000).toFixed(1)}k BTU, ai ${(totBTU/1000)}k)`;
 }
-// zone de aer separate care raman calde
+// zone de aer interioare separate care raman calde
 function countColdRooms(warm){
   const seen=new Uint8Array(grid.length);let warmR=0,coldR=0;
   for(let s=0;s<grid.length;s++){
     if(seen[s]||grid[s]===WALL||grid[s]===WIN)continue;
+    if(interiorDraw&&!interiorDraw[s]){seen[s]=1;continue;}
     let q=[s],warmCells=0,cells=0;seen[s]=1;
     while(q.length){
       const i=q.pop();cells++;
@@ -316,7 +616,9 @@ function countColdRooms(warm){
       const x=i%COLS,y=(i/COLS|0);
       for(const[nx,ny]of[[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
         if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;const j=idx(nx,ny);
-        if(seen[j]||grid[j]===WALL||grid[j]===WIN)continue;seen[j]=1;q.push(j);
+        if(seen[j]||grid[j]===WALL||grid[j]===WIN)continue;
+        if(interiorDraw&&!interiorDraw[j]){seen[j]=1;continue;}
+        seen[j]=1;q.push(j);
       }
     }
     if(cells>6){ if(warmCells/cells>0.5)warmR++; else coldR++; }
@@ -324,32 +626,86 @@ function countColdRooms(warm){
   return warmR+' / '+(warmR+coldR);
 }
 
-// ---------- auto pozitionare ----------
+// ---------- auto pozitionare (triaj in 3 trepte) ----------
+// 1) scor geometric rapid (Dijkstra) doar ca sa taie candidatii evident slabi;
+// 2) fizica "grosiera": acelasi solver CFD pe grila 48×32, pasi putini;
+// 3) fizica completa (96×64) pe finalisti — castigatorul primeste simularea live.
+function quickScore(acCell){
+  const INF=1e9,N=COLS*ROWS;
+  const dist=new Float32Array(N).fill(INF);
+  const pq=[[0,acCell]];dist[acCell]=0;
+  while(pq.length){
+    pq.sort((a,b)=>a[0]-b[0]);
+    const[d,i]=pq.shift(); if(d>dist[i])continue;
+    const x=i%COLS,y=(i/COLS|0);
+    for(const[nx,ny]of[[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
+      if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;
+      const j=idx(nx,ny); if(grid[j]===WALL||grid[j]===WIN)continue;
+      const w=(grid[j]===DOOR||grid[i]===DOOR)?3:1;
+      const nd=d+w; if(nd<dist[j]){dist[j]=nd;pq.push([nd,j]);}
+    }
+  }
+  let s=0;
+  for(let i=0;i<N;i++)if(dist[i]<INF)s+=Math.exp(-dist[i]/10);
+  return s;
+}
+function runHeadless(sf,P,steps,dt,iters){
+  const s=buildSim(sf,P,iters);
+  for(let k=0;k<steps;k++)s.step(dt);
+  return s.coverage(P.setT+P.thr);
+}
 function autoPlace(){
-  const P=readParams();
+  const P=readParams(); lastP=P;
+  stopRun(false);
   for(let i=0;i<grid.length;i++)if(grid[i]===AC)grid[i]=EMPTY;
   const candidates=[];
   for(let i=0;i<grid.length;i++)if(grid[i]===EMPTY){
     const x=i%COLS,y=(i/COLS|0); if(isWallAdjacent(x,y))candidates.push(i);
   }
   if(!candidates.length){document.getElementById('msg').textContent='Desenează întâi pereți — unitatea se montează pe un perete.';return;}
-  showLoader('Caut poziția optimă…');
+  showLoader('Caut poziția optimă — presortare…');
   setTimeout(()=>{
-    const warm=P.setT+P.thr; let best=-1,bestScore=-1;
-    for(const c of candidates){
-      const r=simulate([c],P);
-      let inside=0,total=0;
-      for(let i=0;i<grid.length;i++){
-        if(isNaN(r.T[i])||grid[i]===WALL||grid[i]===WIN)continue;
-        total++; if(r.T[i]<=warm)inside++;
+    const short=candidates.map(c=>[quickScore(c),c])
+      .sort((a,b)=>b[0]-a[0]).slice(0,20).map(x=>x[1]);
+    const scores=[];let k=0;
+    const stage2=()=>{
+      if(k<short.length){
+        const c=short[k];
+        grid[c]=AC;
+        scores.push([runHeadless(1,P,200,2,10),c]);
+        grid[c]=EMPTY;
+        k++;
+        document.getElementById('loaderTxt').textContent=
+          `Caut poziția optimă — fizică rapidă ${k}/${short.length}…`;
+        setTimeout(stage2,0);
+      }else{
+        const finalists=scores.sort((a,b)=>b[0]-a[0]).slice(0,2).map(x=>x[1]);
+        let best=-1,bestScore=-1,f=0;
+        const stage3=()=>{
+          if(f<finalists.length){
+            const c=finalists[f];
+            grid[c]=AC;
+            const sc=runHeadless(2,P,240,1.5,20);
+            grid[c]=EMPTY;
+            if(sc>bestScore){bestScore=sc;best=c;}
+            f++;
+            document.getElementById('loaderTxt').textContent=
+              `Caut poziția optimă — verificare finală ${f}/${finalists.length}…`;
+            setTimeout(stage3,0);
+          }else{
+            hideLoader();
+            if(best>=0){
+              grid[best]=AC;
+              document.getElementById('msg').textContent='Poziția optimă găsită — pornesc simularea live.';
+              startRun();
+            }
+          }
+        };
+        stage3();
       }
-      const score=total?inside/total:0;
-      if(score>bestScore){bestScore=score;best=c;}
-    }
-    if(best>=0){grid[best]=AC;run(false);
-      document.getElementById('msg').textContent='Poziția optimă găsită — acoperire maximă cu o singură unitate la setările curente.';}
-    hideLoader();
-  },400);
+    };
+    setTimeout(stage2,0);
+  },30);
 }
 
 // ---------- simboluri arhitecturale ----------
@@ -384,7 +740,6 @@ function drawDoor(x,y){
   ctx.strokeStyle='#b45309';ctx.lineWidth=1.5;ctx.fillStyle='#b45309';
   if(horiz){
     const wy=cy+CELL/2, roomUp=!isWall(x,y-1);
-    const hx=cx, hy=hx, hingeY=wy;                    // balamaua pe jamba stanga
     const tipY=roomUp?wy-CELL:wy+CELL;
     ctx.beginPath();ctx.moveTo(cx,wy);ctx.lineTo(cx,tipY);ctx.stroke();  // canat
     const a0=Math.atan2(tipY-wy,0), a1=Math.atan2(wy-wy,(cx+CELL)-cx);
@@ -529,13 +884,13 @@ function tempColor(t){
 
 // ---------- exemplu ----------
 function demo(){
+  stopRun(false);
   grid=new Uint8Array(COLS*ROWS);
   // contur
   for(let x=4;x<44;x++){grid[idx(x,4)]=WALL;grid[idx(x,27)]=WALL;}
   for(let y=4;y<28;y++){grid[idx(4,y)]=WALL;grid[idx(43,y)]=WALL;}
   // pereti interiori: 2 dormitoare in stanga
   for(let y=4;y<16;y++)grid[idx(18,y)]=WALL;
-  for(let x=4;x<18;x++)grid[idx(x,16)]=WALL;
   for(let x=4;x<18;x++)grid[idx(x,16)]=WALL;
   grid[idx(18,10)]=DOOR;             // usa dormitor 1
   grid[idx(11,16)]=DOOR;             // usa dormitor 2
@@ -545,22 +900,24 @@ function demo(){
   grid[idx(30,4)]=WIN;grid[idx(31,4)]=WIN;
   // AC in living, montat pe peretele din dreapta
   grid[idx(42,8)]=AC;
-  temp=null;draw();
+  temp=null;interiorDraw=null;draw();
   document.getElementById('msg').textContent='Exemplu încărcat: 2 dormitoare + living. Apasă „Rulează”.';
 }
 
-document.getElementById('run').onclick=run;
+document.getElementById('run').onclick=()=>{running?stopRun(true):startRun();};
 document.getElementById('auto').onclick=autoPlace;
-document.getElementById('clear').onclick=()=>{grid=new Uint8Array(COLS*ROWS);temp=null;draw();
+document.getElementById('clear').onclick=()=>{stopRun(false);grid=new Uint8Array(COLS*ROWS);
+  temp=null;interiorDraw=null;draw();
   document.getElementById('cov').textContent='–';document.getElementById('msg').textContent='Plan gol.';};
 document.getElementById('demo').onclick=demo;
 const th=document.getElementById('th');
-th.oninput=()=>{document.getElementById('thV').textContent=th.value;if(temp)run(false);};
-// re-ruleaza la schimbarea oricarei setari
+th.oninput=()=>{document.getElementById('thV').textContent=th.value;
+  if(lastP){lastP.thr=+th.value;} if(temp&&!running)finalStats();};
+// re-porneste simularea la schimbarea oricarei setari
 ['btu','setT','fan','outT','hour','north','scale'].forEach(id=>{
-  document.getElementById(id).addEventListener('change',()=>{if(temp)run(false);else draw();});
+  document.getElementById(id).addEventListener('change',()=>{if(running||temp)startRun();else draw();});
 });
-document.getElementById('height').addEventListener('input',()=>{if(temp)run(false);else draw();});
+document.getElementById('height').addEventListener('input',()=>{if(running||temp)startRun();else draw();});
 
 // presetari (raspunsurile tale)
 function preset(id,v){document.getElementById(id).value=v;}
