@@ -1,0 +1,25 @@
+{
+  "name": "simulare-aer-cond",
+  "version": "1.0.0",
+  "description": "Simulator CFD de răcire apartament cu editor de planuri și stocare SQLite",
+  "main": "index.js",
+  "scripts": {
+    "start": "node --experimental-sqlite server.js",
+    "dev": "node --watch --experimental-sqlite server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aaldescu/simulare-aer-cond.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/aaldescu/simulare-aer-cond/issues"
+  },
+  "homepage": "https://github.com/aaldescu/simulare-aer-cond#readme",
+  "dependencies": {
+    "express": "^4.22.2"
+  },
+  "type": "module"
+}

@@ -4,7 +4,14 @@ Listă de tools de dezvoltat pentru simulatorul de răcire apartament.
 
 ---
 
-## 1. Editor de plan de apartament (sub buton „Meniu”)
+## 1. Editor de plan de apartament (sub buton „Meniu”) ✅ FĂCUT
+
+> Implementat: meniu Simulator / Editor plan, poză de fundal cu slider de
+> opacitate, desenare peste poză, proprietăți per apartament (nord 0–360°,
+> înălțime, scară), salvare/încărcare/ștergere prin API + SQLite (`server.js` +
+> `db.js`), dropdown de apartament în simulator. Nordul pe 360° a înlocuit
+> selectorul pe 4 direcții. Faza 2 (detectare automată a pereților din poză)
+> rămâne pentru mai târziu.
 
 **Scop:** să pot crea planuri de apartament ușor, pornind de la o poză reală, și să le refolosesc în simulator.
 
