@@ -30,6 +30,7 @@
     font-weight:600;cursor:pointer;font-size:14px;margin-top:6px}
   .btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
   .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.on{background:#e0f2fe;border-color:var(--accent)}
   .row{display:flex;gap:8px}
   label.slab{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
   input[type=range]{width:100%}
@@ -137,7 +138,7 @@
         <button class="btn" id="run" style="margin-top:12px">▶ Rulează simularea</button>
         <div class="row" style="margin-top:8px">
           <button class="btn ghost" id="pause" disabled>⏸ Pauză</button>
-          <button class="btn ghost" id="tempbtn" disabled>🌡 Temperatură: OFF</button>
+          <button class="btn ghost" id="tempbtn" disabled>🌡 Arată temperaturi</button>
         </div>
         <button class="btn ghost" id="auto" style="margin-top:8px">✨ Găsește poziția optimă pentru AC</button>
       </div>
@@ -534,7 +535,7 @@ let paused=false,showTemps=false;
 const pauseBtn=document.getElementById('pause'),tempBtn=document.getElementById('tempbtn');
 function setTempBtn(on){
   showTemps=on;
-  tempBtn.textContent='🌡 Temperatură: '+(on?'ON':'OFF');
+  tempBtn.classList.toggle('on',on);   // starea se vede din evidentiere, textul ramane unul singur
 }
 function syncControls(){
   pauseBtn.disabled=!running;
