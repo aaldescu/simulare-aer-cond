@@ -43,6 +43,12 @@ Planurile sunt stocate în SQLite (`data/plans.db`). Endpoints:
 | `POST` | `/api/plans` | creează un plan |
 | `PUT` | `/api/plans/:id` | actualizează un plan |
 | `DELETE` | `/api/plans/:id` | șterge un plan |
+| `GET` | `/debug` | index text: toate planurile cu etanș DA/NU + coordonatele breșelor |
+| `GET` | `/api/plans/:id/debug` | analiză text a unui plan: hartă ASCII + breșe (`?format=json` pentru date brute) |
+
+Debug: `/debug` arată rapid ce plan nu e închis ermetic și unde e gaura;
+`/api/plans/:id/debug` desenează planul ca hartă ASCII (`#` perete, `=` geam,
+`/` ușă, `A` AC, `·` aer, `o` aer exterior pătruns, `X` breșă).
 
 Un plan = `{ name, cols, rows, grid, north, height, scale, photo }`, unde `grid`
 e un șir de cifre `0..4` (o celulă / caracter: 0 gol, 1 perete, 2 ușă, 3

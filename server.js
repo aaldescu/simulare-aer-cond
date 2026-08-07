@@ -4,6 +4,7 @@ import express from 'express';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listPlans, getPlan, createPlan, updatePlan, deletePlan } from './db.js';
+import { analyze, report } from './analyze.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -39,6 +40,25 @@ app.get('/api/plans/:id', (req, res) => {
   const p = getPlan(Number(req.params.id));
   if (!p) return res.status(404).json({ error: 'not found' });
   res.json(p);
+});
+
+// debug: index cu toate planurile (etanș? + breșe), ca să nu fie nevoie de id
+app.get('/debug', (req, res) => {
+  const rows = listPlans().map(pl => {
+    const full = getPlan(pl.id);
+    const a = analyze(full);
+    return `#${pl.id}  ${pl.name}  —  etanș: ${a.sealed ? 'DA' : 'NU'}${a.gaps.length ? '  breșe: ' + JSON.stringify(a.gaps) : ''}  ·  detalii: /api/plans/${pl.id}/debug`;
+  });
+  res.type('text/plain; charset=utf-8').send('Planuri (' + rows.length + ')\n\n' + rows.join('\n'));
+});
+
+// debug: analiza etanșeității + hartă ASCII (text). ?format=json pentru date brute.
+app.get('/api/plans/:id/debug', (req, res) => {
+  const p = getPlan(Number(req.params.id));
+  if (!p) return res.status(404).json({ error: 'not found' });
+  const a = analyze(p);
+  if (req.query.format === 'json') return res.json({ plan: { id: p.id, name: p.name, cols: p.cols, rows: p.rows, north: p.north, scale: p.scale, height: p.height, grid: p.grid }, analysis: a });
+  res.type('text/plain; charset=utf-8').send(report(p, a));
 });
 
 app.post('/api/plans', (req, res) => {
