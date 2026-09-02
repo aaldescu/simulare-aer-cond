@@ -347,12 +347,12 @@ f = 0.15 + 0.85·cos(Δ)   dacă cos(Δ) > 0 ,  altfel 0.15</div>
     </ul>
 
     <h2>8. Modelul 3D (opțiunea „Model fizic: 3D”)</h2>
-    <p>În „Simulator”, la <b>Model fizic</b> poți alege „3D — flotabilitate”: atunci se rezolvă aceeași curgere incompresibilă și același transport de căldură, dar <b>volumetric</b> — cu o dimensiune verticală reală. Planul (48×32) e extrudat pe <code>D = round(H_tavan / scară)</code> straturi (limitat la 6–14), cu <code>h_z = H_tavan / D</code> metri pe celulă verticală. Pereții și geamurile sunt solide pe toată înălțimea; <b>ușa e o deschidere doar în partea de jos</b> (perete deasupra ei, ~2,1 m), iar podeaua și tavanul sunt limite fără scurgere.</p>
+    <p>În „Simulator”, la <b>Model fizic</b> poți alege „3D — flotabilitate”: atunci se rezolvă aceeași curgere incompresibilă și același transport de căldură, dar <b>volumetric</b> — cu o dimensiune verticală reală. Planul (48×32) e extrudat pe <code>D = round(H_tavan / scară)</code> straturi (limitat la 6–14), cu <code>h_z = H_tavan / D</code> metri pe celulă verticală. Pereții și geamurile sunt solide pe toată înălțimea; <b>ușa e o deschidere pe toată înălțimea</b> (ca în 2D — aerul comunică liber între camere la orice nivel), iar podeaua și tavanul sunt limite fără scurgere.</p>
     <p>Noutatea fizică, absentă în 2D, e <b>flotabilitatea</b> (aproximație Boussinesq): o forță verticală proporțională cu abaterea de la temperatura medie împinge aerul rece în jos și pe cel cald în sus.</p>
     <div class="eq">∂u/∂t + (u·∇)u = −∇p/ρ + f_ventilator + f_flotabilitate − DRAG·u
 f_flotabilitate = g·β·(T − T_ref) · ẑ        (ẑ = în sus)
 ∇·u = 0   (proiecție de presiune 3D, Gauss–Seidel cu 6 vecini)</div>
-    <p>Consecințe pe care le vezi: aerul rece de la unitate (montată sus, lângă tavan) e aruncat orizontal, se răcește, apoi <b>coboară și se adună la nivelul podelei</b> (stratificare — podeaua mai rece decât tavanul); iar aerul rece <b>curge prin golul ușii</b> la nivelul podelei în camera vecină. Advecția e tot semi-Lagrangiană, dar triliniară și mărginită, deci temperaturile rămân între aerul suflat și cel ambiant și <b>nu trec prin pereți solizi</b>. Conducția prin anvelopă (pereți/geamuri) e la fel ca în 2D — tavanul și podeaua dau spre alte apartamente, deci nu pierd căldură. <b>Acoperirea de confort se măsoară în zona ocupată (≤ 1,8 m)</b>: aerul cald de sub tavan (normal, din stratificare) nu strică procentul.</p>
+    <p>Consecințe pe care le vezi: aerul rece de la unitate (montată sus, lângă tavan) e aruncat orizontal, se răcește, apoi <b>coboară și se adună la nivelul podelei</b> (stratificare — podeaua mai rece decât tavanul); iar aerul rece <b>curge prin ușile deschise</b> în camera vecină. Advecția e tot semi-Lagrangiană, dar triliniară și mărginită, deci temperaturile rămân între aerul suflat și cel ambiant și <b>nu trec prin pereți solizi</b>. Conducția prin anvelopă (pereți/geamuri) e la fel ca în 2D — tavanul și podeaua dau spre alte apartamente, deci nu pierd căldură. <b>Acoperirea de confort se măsoară în zona ocupată (≤ 1,8 m)</b>: aerul cald de sub tavan (normal, din stratificare) nu strică procentul.</p>
     <p><b>Afișare:</b> se folosește aceeași animație 2D de sus care-ți e familiară — harta arată o <b>felie orizontală</b> la înălțimea aleasă din sliderul „Înălțime afișată”, pe care îl muți de la podea la tavan ca să vezi stratificarea (rece jos, cald sus). Deci: fizică 3D dedesubt, vedere 2D deasupra.</p>
     <p class="sym">Rezolvat pe grila de desen (fără subdiviziune orizontală) × 6–14 straturi verticale ≈ 10–20 mii de celule — rulează live în browser.</p>
 
@@ -877,8 +877,8 @@ function buildSim(sf,P,iters){
 // Extinde curgerea incompresibila si transportul de caldura pe verticala (z = sus).
 // Nou fata de 2D: FLOTABILITATEA (aprox. Boussinesq) — aerul rece coboara, cel cald
 // urca, deci apare stratificarea pe inaltime, iar aerul rece „curge” la nivelul
-// podelei prin golul usii in camera vecina. Peretii/geamurile sunt solizi pe toata
-// inaltimea; usa e o deschidere doar in partea de jos (perete deasupra ei).
+// podelei prin usa in camera vecina. Peretii/geamurile sunt solizi pe toata
+// inaltimea; usa e o deschidere pe toata inaltimea (ca in 2D, camere conectate).
 const G_BUOY=0.012;              // acceleratie de flotabilitate pe grad (g·β, calibrat):
                                  // destul cat aerul rece sa coboare/stratifice si sa curga
                                  // prin usa, dar nu atat cat sa blocheze racirea camerei
@@ -893,9 +893,9 @@ function buildSim3D(P){
   const si=(x,y,z)=>z*STR+y*W+x;
   const out2=floodOut();                                      // coloane exterioare
   const gcol=(x,y)=>grid[idx(x,y)];
-  const doorTop=Math.max(1,Math.min(D-1,Math.round(2.1/hz)));  // usa ~2,1 m inaltime
-  // ---- geometrie solida (perete/geam pe toata inaltimea; exterior nesimulat;
-  //      perete deasupra usii) ----
+  // ---- geometrie solida: perete/geam pe toata inaltimea; exteriorul nesimulat.
+  //      Ușa = deschidere pe TOATĂ înălțimea coloanei (ca în 2D) — aerul comunică
+  //      liber între camere la orice nivel (nu punem perete deasupra ușii). ----
   const S=new Uint8Array(N);
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
     const g=gcol(x,y), oi=y*W+x, exterior=out2[oi]===1;
@@ -903,7 +903,6 @@ function buildSim3D(P){
       let solid=false;
       if(g===WALL||g===WIN)solid=true;
       else if(exterior)solid=true;                    // exteriorul: doar conductie, nu curgere
-      else if(g===DOOR&&z>=doorTop)solid=true;        // perete deasupra usii
       if(solid)S[si(x,y,z)]=1;
     }
   }

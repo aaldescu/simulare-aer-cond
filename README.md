@@ -16,9 +16,10 @@ bază de date SQLite.
   flotabilitate** rulează aceeași fizică, dar **volumetrică**: planul e extrudat
   pe înălțime (6–14 straturi, după înălțimea tavanului) și se adaugă
   **flotabilitatea** (Boussinesq) — aerul rece coboară, cel cald urcă, se
-  stratifică pe înălțime și curge prin golul ușii la nivelul podelei în camera
-  vecină. Se afișează cu aceeași animație 2D de sus: harta e o felie orizontală
-  la înălțimea aleasă din slider (podea → tavan), ca să vezi stratificarea.
+  stratifică pe înălțime și curge prin ușile deschise în camera vecină (ușa e o
+  deschidere pe toată înălțimea, ca în 2D). Se afișează cu aceeași animație 2D de
+  sus: harta e o felie orizontală la înălțimea aleasă din slider (podea → tavan),
+  ca să vezi stratificarea.
 - **Editor plan** — încarci poza unui apartament ca fundal (cu slider de
   opacitate), desenezi planul peste ea, setezi proprietățile apartamentului
   (nord ca azimut 0–360°, înălțime tavan, scară) și salvezi. Planurile salvate
