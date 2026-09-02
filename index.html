@@ -171,6 +171,12 @@
               <option value="afternoon">După-amiaza (V)</option>
               <option value="night">Seara/noaptea</option>
             </select></div>
+          <div><label class="slab">Rezoluție simulare</label>
+            <select id="simRes">
+              <option value="1">Rapidă (1×)</option>
+              <option value="2" selected>Normală (2×)</option>
+              <option value="4">Înaltă (4×)</option>
+            </select></div>
         </div>
         <!-- proprietăți ale apartamentului (nord/scară/înălțime): vin din editor,
              ascunse aici, dar folosite de simulare -->
@@ -318,7 +324,7 @@ f = 0.15 + 0.85·cos(Δ)   dacă cos(Δ) > 0 ,  altfel 0.15</div>
 
     <h2>6. Grilă, timp și convergență</h2>
     <ul>
-      <li>Desenezi pe o grilă de <b>48×32</b>; solverul rulează pe o subgrilă <b>96×64</b> (2×), cu <code>h = scară / 2</code> metri pe celulă.</li>
+      <li>Desenezi pe o grilă de <b>48×32</b>; solverul rulează pe o subgrilă cu factorul de <b>rezoluție</b> ales — 1× (48×32), 2× (96×64) sau 4× (192×128), cu <code>h = scară / factor</code> metri pe celulă. La 4× difuzia e sub-ciclată ca să rămână stabilă, iar multigridul își arată avantajul (mai multe niveluri). E mai fin, dar mai lent.</li>
       <li>Pas de timp <code>dt = 0.75 s</code>, 4 sub-pași pe cadru ≈ <b>180× timp real</b>. Simularea se oprește la echilibru sau la <b>90 de minute</b> simulate.</li>
       <li><b>Acoperire confort</b> = procentul celulelor de aer interior cu <code>T ≤ T_setată + prag</code>.</li>
     </ul>
@@ -784,17 +790,21 @@ function buildSim(sf,P,iters){
     acct.t+=dt;
     // bilantul fazei de transport (difuzie+advectie nu au voie sa creeze/distruga energie)
     let sumB=0;for(let i=0;i<N;i++)if(inM[i])sumB+=T[i];
-    // difuzie turbulenta a temperaturii (explicit, stabil la a<0.25)
-    const a=ALPHA_T*dt/(h*h);
-    T0.set(T);
-    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-      const i=si(x,y); if(S[i])continue;
-      let s=0,c=0;
-      if(x+1<W&&!S[si(x+1,y)]){s+=T0[si(x+1,y)];c++;}
-      if(x-1>=0&&!S[si(x-1,y)]){s+=T0[si(x-1,y)];c++;}
-      if(y+1<H&&!S[si(x,y+1)]){s+=T0[si(x,y+1)];c++;}
-      if(y-1>=0&&!S[si(x,y-1)]){s+=T0[si(x,y-1)];c++;}
-      if(c)T[i]=T0[i]+a*(s-c*T0[i]);
+    // difuzie turbulenta a temperaturii (explicit). La rezolutie mare h scade,
+    // deci a=α·dt/h² creste; sub-ciclam ca sa ramana sub pragul de stabilitate (0.2)
+    const aTot=ALPHA_T*dt/(h*h);
+    const mDiff=Math.max(1,Math.ceil(aTot/0.2)), a=aTot/mDiff;
+    for(let pass=0;pass<mDiff;pass++){
+      T0.set(T);
+      for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+        const i=si(x,y); if(S[i])continue;
+        let s=0,c=0;
+        if(x+1<W&&!S[si(x+1,y)]){s+=T0[si(x+1,y)];c++;}
+        if(x-1>=0&&!S[si(x-1,y)]){s+=T0[si(x-1,y)];c++;}
+        if(y+1<H&&!S[si(x,y+1)]){s+=T0[si(x,y+1)];c++;}
+        if(y-1>=0&&!S[si(x,y-1)]){s+=T0[si(x,y-1)];c++;}
+        if(c)T[i]=T0[i]+a*(s-c*T0[i]);
+      }
     }
     // advectia temperaturii de catre curgere
     T0.set(T); advect(T,T0,dt);
@@ -1031,7 +1041,7 @@ function startRun(){
   msgEl.classList.remove('warn'); clearLeak();
   stopRun(false);
   const P=readParams(); lastP=P;
-  sim=buildSim(2,P,ITERS_LIVE); simTime=0; running=true;
+  sim=buildSim(simSf(),P,ITERS_LIVE); simTime=0; running=true;
   temp=new Float32Array(grid.length); interiorDraw=new Uint8Array(grid.length);
   colorSet=P.setT; colorAmb=P.outT;
   snapT=new Float32Array(sim.T); snapTime=0;
@@ -1799,7 +1809,8 @@ const th=document.getElementById('th');
 th.oninput=()=>{document.getElementById('thV').textContent=th.value;
   if(lastP){lastP.thr=+th.value;} if(temp&&!running)finalStats();};
 // re-porneste simularea la schimbarea oricarei setari
-['btu','setT','fan','outT','hour','north','scale'].forEach(id=>{
+function simSf(){return +document.getElementById('simRes').value||2;}   // factor rezolutie
+['btu','setT','fan','outT','hour','north','scale','simRes'].forEach(id=>{
   document.getElementById(id).addEventListener('change',()=>{if(running||temp)startRun();else draw();});
 });
 document.getElementById('height').addEventListener('input',()=>{if(running||temp)startRun();else draw();});
