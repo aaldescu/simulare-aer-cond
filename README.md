@@ -18,6 +18,10 @@ bază de date SQLite.
   stratifică pe înălțime și curge prin golul ușii la nivelul podelei în camera
   vecină. Viewer WebGL (Three.js): nor de voxeli de aer răcit, o felie de
   temperatură mobilă pe înălțime și săgeți 3D de curenți; rotești cu mouse-ul.
+- **3D în vedere de sus** — în „Simulator", opțiunea **Model fizic → 3D —
+  flotabilitate** rulează motorul 3D dar îl afișează cu animația 2D obișnuită:
+  harta e o felie orizontală la înălțimea aleasă din slider (podea → tavan), deci
+  vezi stratificarea cu aspectul 2D care-ți place.
 - **Editor plan** — încarci poza unui apartament ca fundal (cu slider de
   opacitate), desenezi planul peste ea, setezi proprietățile apartamentului
   (nord ca azimut 0–360°, înălțime tavan, scară) și salvezi. Planurile salvate

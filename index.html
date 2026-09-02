@@ -180,6 +180,17 @@
               <option value="2" selected>Normală (2×)</option>
               <option value="4">Înaltă (4×)</option>
             </select></div>
+          <div><label class="slab">Model fizic</label>
+            <select id="physModel">
+              <option value="2d" selected>2D (rapid)</option>
+              <option value="3d">3D — flotabilitate</option>
+            </select></div>
+        </div>
+        <!-- înălțimea feliei afișate (doar la modelul 3D): harta e o felie orizontală -->
+        <div id="sliceRow" style="display:none;margin-top:6px">
+          <label class="slab">Înălțime afișată: <span id="slice2dV">–</span></label>
+          <input type="range" id="slice2d" min="0" max="7" value="0">
+          <p class="hint" style="margin:4px 0 0">Model 3D: harta arată o felie orizontală. Trage sliderul de la podea la tavan ca să vezi stratificarea (rece jos, cald sus).</p>
         </div>
         <!-- proprietăți ale apartamentului (nord/scară/înălțime): vin din editor,
              ascunse aici, dar folosite de simulare -->
@@ -429,6 +440,7 @@ f = 0.15 + 0.85·cos(Δ)   dacă cos(Δ) > 0 ,  altfel 0.15</div>
 f_flotabilitate = g·β·(T − T_ref) · ẑ        (ẑ = în sus)
 ∇·u = 0   (proiecție de presiune 3D, Gauss–Seidel cu 6 vecini)</div>
     <p>Consecințe pe care le vezi: aerul rece de la unitate (montată sus, lângă tavan) e aruncat orizontal, se răcește, apoi <b>coboară și se adună la nivelul podelei</b> (stratificare — podeaua mai rece decât tavanul); iar aerul rece <b>curge prin golul ușii</b> la nivelul podelei în camera vecină. Advecția e tot semi-Lagrangiană, dar triliniară și mărginită, deci temperaturile rămân între aerul suflat și cel ambiant și <b>nu trec prin pereți solizi</b>. Conducția prin anvelopă (pereți/geamuri) e la fel ca în 2D — tavanul și podeaua dau spre alte apartamente, deci nu pierd căldură. <b>Acoperirea de confort se măsoară în zona ocupată (≤ 1,8 m)</b>: aerul cald de sub tavan (normal, din stratificare) nu strică procentul. Vizualizarea: nor de voxeli colorați (aer răcit), o felie orizontală de temperatură mobilă pe înălțime și săgeți 3D de curent de aer; rotești cu mouse-ul.</p>
+    <p>Acest model 3D poate fi rulat și în <b>vederea de sus</b> obișnuită: în „Simulator", la <b>Model fizic</b> alegi „3D — flotabilitate". Atunci harta 2D arată o <b>felie orizontală</b> la înălțimea pe care o alegi din slider — de la podea la tavan — deci vezi stratificarea (rece jos, cald sus) cu aceeași animație 2D, dar cu fizica 3D dedesubt.</p>
     <p class="sym">Rezolvat pe grila de desen (fără subdiviziune orizontală) × 6–14 straturi verticale ≈ 10–20 mii de celule — rulează live în browser.</p>
 
     <h2>Limite ale modelului</h2>
@@ -1225,6 +1237,60 @@ function buildSim3D(P){
           nFluid,units:units.length,solarW,Tsup,get duty(){return lastDuty;}};
 }
 
+// Adaptor: ruleaza motorul 3D dar expune interfata solverului 2D, ca sa se
+// deseneze cu ACEEASI animatie de sus (harta + curenti + cote). „Felia" aleasa
+// (un strat orizontal, la o inaltime data) e ce se vede pe hartă — asa se pastreaza
+// fizica 3D (flotabilitate, stratificare, curgere prin usa) cu afisarea 2D.
+function buildSim3Dview(P){
+  const s3=buildSim3D(P);
+  const {W,H,D,si,FL,hz}=s3;
+  const N2=W*H;
+  const S2=new Uint8Array(N2), in2=new Uint8Array(N2);
+  const u2=new Float32Array(N2), v2=new Float32Array(N2), T2=new Float32Array(N2);
+  // masca 2D pe coloana: interior daca coloana are aer (macar un strat)
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const c=y*W+x; let anyFluid=false;
+    for(let z=0;z<D;z++)if(FL[si(x,y,z)]){anyFluid=true;break;}
+    S2[c]=anyFluid?0:1; in2[c]=anyFluid?1:0;
+  }
+  // felia implicita: la nivelul oamenilor (~1,1 m)
+  let zSlice=Math.max(0,Math.min(D-1,Math.round(1.1/hz)));
+  // celula de aer din coloana cea mai apropiata pe verticala de z (pt coloanele
+  // interioare unde felia cade pe solid — ex. peretele de deasupra usii)
+  function colFluidNear(x,y,z){
+    for(let d=0;d<D;d++){
+      const zu=z+d,zl=z-d;
+      if(zu<D&&FL[si(x,y,zu)])return si(x,y,zu);
+      if(zl>=0&&FL[si(x,y,zl)])return si(x,y,zl);
+    }
+    return -1;
+  }
+  function sync(){
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+      const c=y*W+x;
+      if(!in2[c]){T2[c]=NaN;u2[c]=0;v2[c]=0;continue;}
+      let i=si(x,y,zSlice); if(!FL[i])i=colFluidNear(x,y,zSlice);
+      if(i<0){T2[c]=NaN;u2[c]=0;v2[c]=0;}
+      else{T2[c]=s3.T[i];u2[c]=s3.u[i];v2[c]=s3.v[i];}
+    }
+  }
+  sync();
+  function toDraw(tArr,inArr){ sync();
+    for(let c=0;c<N2;c++){ tArr[c]=in2[c]?T2[c]:NaN; inArr[c]=in2[c]; } }
+  function hottest(){ let m=-99; for(let c=0;c<N2;c++)if(in2[c]&&!isNaN(T2[c])&&T2[c]>m)m=T2[c]; return m; }
+  return {
+    step:dt=>s3.step(dt), toDraw, hottest,
+    coverage:w=>s3.coverage(w),               // zona ocupata (≤1,8 m), din motorul 3D
+    get duty(){return s3.duty;},
+    T:T2, inMask:in2, N:N2,                    // convergenta / statistici pe felie
+    S:S2, u:u2, v:v2, simW:W, simH:H, sf:1,
+    units:s3.units, solarW:s3.solarW,
+    is3D:true, D, hz, sliceZ:()=>zSlice,
+    setSlice(z){ zSlice=Math.max(0,Math.min(D-1,z|0)); sync(); },
+    stats:()=>s3.stats(),
+  };
+}
+
 // ---------- loader ----------
 function showLoader(t){const l=document.getElementById('loader');
   document.getElementById('loaderTxt').textContent=t||'Se pregătește simularea…';l.classList.add('on');}
@@ -1407,7 +1473,13 @@ function startRun(){
   msgEl.classList.remove('warn'); clearLeak();
   stopRun(false);
   const P=readParams(); lastP=P;
-  sim=buildSim(simSf(),P,ITERS_LIVE); simTime=0; running=true;
+  // motorul: 2D rapid (implicit) sau 3D cu flotabilitate, afisat ca felie 2D
+  if(document.getElementById('physModel').value==='3d'){
+    sim=buildSim3Dview(P); setupSliceSlider();
+  }else{
+    sim=buildSim(simSf(),P,ITERS_LIVE);
+  }
+  simTime=0; running=true;
   temp=new Float32Array(grid.length); interiorDraw=new Uint8Array(grid.length);
   colorSet=P.setT; colorAmb=P.outT;
   snapT=new Float32Array(sim.T); snapTime=0;
@@ -2183,6 +2255,35 @@ document.getElementById('demo').onclick=demo;
 const th=document.getElementById('th');
 th.oninput=()=>{document.getElementById('thV').textContent=th.value;
   if(lastP){lastP.thr=+th.value;} if(temp&&!running)finalStats();};
+
+// --- model fizic 2D/3D + felia de inaltime (doar la 3D) ---
+function updateSlice2dLabel(){
+  const sl=$('slice2d');
+  if(sim&&sim.is3D){const m=((+sl.value+0.5)*sim.hz).toFixed(2);
+    $('slice2dV').textContent=`${m} m (strat ${+sl.value+1}/${sim.D})`;}
+  else $('slice2dV').textContent='–';
+}
+let slice2dPref=null;                        // felia aleasa de utilizator (pastrata intre rulari)
+function setupSliceSlider(){                  // apelat cand pornim simularea 3D
+  if(!sim||!sim.is3D)return;
+  const sl=$('slice2d'); sl.max=sim.D-1;
+  // implicit la nivelul oamenilor (~1,1 m); pastreaza alegerea utilizatorului daca exista
+  let z=(slice2dPref==null)?sim.sliceZ():slice2dPref;
+  z=Math.max(0,Math.min(sim.D-1,z)); sl.value=z;
+  sim.setSlice(z); updateSlice2dLabel();
+}
+$('physModel').onchange=()=>{
+  const is3d=$('physModel').value==='3d';
+  $('sliceRow').style.display=is3d?'':'none';
+  $('simRes').closest('div').style.opacity=is3d?0.5:1;   // rezolutia nu se aplica la 3D
+  if(running||temp)startRun();
+};
+$('slice2d').oninput=()=>{
+  slice2dPref=+$('slice2d').value;
+  if(sim&&sim.is3D){ sim.setSlice(slice2dPref); updateSlice2dLabel();
+    if(temp){ sim.toDraw(temp,interiorDraw); draw();
+      if(!running)finalStats(); } }
+};
 // re-porneste simularea la schimbarea oricarei setari
 function simSf(){return +document.getElementById('simRes').value||2;}   // factor rezolutie
 ['btu','setT','fan','outT','hour','north','scale','simRes'].forEach(id=>{
