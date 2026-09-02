@@ -4,8 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Simulare răcire apartament</title>
-<!-- Three.js (viewer 3D), servit local din /vendor (UMD -> global THREE). -->
-<script src="/vendor/three.min.js"></script>
 <style>
   :root{
     --bg:#f8fafc; --panel:#ffffff; --panel2:#f1f5f9; --line:#e2e8f0;
@@ -103,7 +101,6 @@
 
   <div class="menubar" id="menubar">
     <button data-view="sim" class="active">Simulator</button>
-    <button data-view="sim3d">🧊 Simulator 3D</button>
     <button data-view="editor">🏠 Editor plan</button>
     <button data-view="docs">📖 Model fizic</button>
   </div>
@@ -281,90 +278,6 @@
     </div>
   </div>
 
-  <!-- ==================== VEDERE 3D ==================== -->
-  <div class="wrap" id="wrap3d" style="display:none">
-    <div class="canvasbox" id="box3d">
-      <div id="c3holder" style="position:relative;width:100%;height:480px;background:#0b1220;border-radius:8px;overflow:hidden">
-        <canvas id="cv3d" style="width:100%;height:100%;display:block"></canvas>
-        <div id="c3hint" style="position:absolute;left:10px;top:8px;font-size:11px;color:#e2e8f0;background:rgba(15,23,42,.6);padding:3px 8px;border-radius:6px;pointer-events:none">trage = rotește · scroll = zoom · Shift+trage = mută</div>
-        <div id="c3loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#e2e8f0;font-size:13px">Se pregătește vederea 3D…</div>
-      </div>
-      <div class="legend" style="margin-top:8px">
-        <span>Rece</span><div class="grad"></div><span>Cald</span>
-        <span style="margin-left:10px">🧊 voxeli = aer răcit · plan = felia la înălțimea aleasă · ↗ curenți 3D</span>
-      </div>
-      <div id="tlwrap3d" style="display:none;margin-top:6px">
-        <canvas id="tl3d" width="720" height="72"></canvas>
-      </div>
-    </div>
-
-    <div class="side" id="side-sim3d">
-      <div class="card">
-        <h2>Apartament</h2>
-        <select id="aptSelect3d"><option value="">(desen liber)</option></select>
-        <p class="hint" id="aptHint3d" style="margin:8px 0 0">Alege un apartament salvat. Planul și unitățile AC vin din „Editor plan”/„Simulator”. „Exemplu” încarcă un plan demonstrativ.</p>
-        <div class="row" style="margin-top:10px">
-          <button class="btn ghost" id="demo3d">Exemplu</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Setări AC &amp; mediu</h2>
-        <div class="grid2">
-          <div><label class="slab">Putere AC (BTU)</label>
-            <select id="btu3d">
-              <option value="9000">9.000</option>
-              <option value="12000">12.000</option>
-              <option value="18000">18.000</option>
-              <option value="24000">24.000</option>
-            </select></div>
-          <div><label class="slab">Temp. setată (°C)</label>
-            <select id="setT3d">
-              <option value="18">18</option><option value="20">20</option>
-              <option value="22">22</option><option value="24">24</option>
-            </select></div>
-          <div><label class="slab">Ventilator</label>
-            <select id="fan3d">
-              <option value="sleep">Sleep</option>
-              <option value="medium">Medium</option>
-              <option value="max">Max</option>
-            </select></div>
-          <div><label class="slab">Temp. afară (°C)</label>
-            <select id="outT3d">
-              <option value="25">25</option><option value="30">30</option>
-              <option value="35">35</option><option value="40">40</option>
-            </select></div>
-          <div><label class="slab">Ora</label>
-            <select id="hour3d">
-              <option value="morning">Dimineața (E)</option>
-              <option value="noon">Prânz (S)</option>
-              <option value="afternoon">După-amiaza (V)</option>
-              <option value="night">Seara/noaptea</option>
-            </select></div>
-          <div><label class="slab">Înălțime tavan (m)</label>
-            <input type="number" id="height3d" value="2.6" min="2" max="4" step="0.1"></div>
-        </div>
-        <label class="slab" style="margin-top:8px">Felie afișată (înălțime): <span id="sliceV">–</span></label>
-        <input type="range" id="slice3d" min="0" max="7" value="0">
-        <button class="btn" id="run3d" style="margin-top:12px">▶ Rulează simularea 3D</button>
-        <div class="row" style="margin-top:8px">
-          <button class="btn ghost" id="pause3d" disabled>⏸ Pauză</button>
-          <button class="btn ghost" id="reset3d" disabled>↺ Resetează</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Rezultat</h2>
-        <div class="stat"><span>Volum de aer</span><span id="vol3d">–</span></div>
-        <div class="stat"><span>Acoperire confort</span><span class="big" id="cov3d">–</span></div>
-        <div class="stat"><span>Temp. medie</span><span id="mean3d">–</span></div>
-        <div class="stat"><span>Stratificare (podea→tavan)</span><span id="strat3d">–</span></div>
-        <div class="stat"><span>Min / Max</span><span id="mm3d">–</span></div>
-        <p class="hint" id="msg3d">Alege un apartament (sau „Exemplu”) și apasă „Rulează”.</p>
-      </div>
-    </div>
-  </div>
-
   <div id="view-docs" class="docs" style="display:none">
     <h2>Cum funcționează simularea</h2>
     <p class="lead">Simulatorul rezolvă o curgere de aer incompresibilă în plan (vedere de sus), cuplată cu transportul căldurii — o variantă rapidă a metodei „stable fluids” (Jos Stam). Nu e un instrument de proiectare certificat: e un model fizic simplificat, calibrat să dea intuiție corectă despre cum se răcește un apartament.</p>
@@ -433,14 +346,14 @@ f = 0.15 + 0.85·cos(Δ)   dacă cos(Δ) > 0 ,  altfel 0.15</div>
       <li><b>Poziția optimă</b>: triaj în 3 trepte — scor geometric rapid (Dijkstra) pe toate celulele lipite de interior → CFD grosier pe primele 20 → CFD complet pe primele 2 finaliste. Câștigătoarea maximizează acoperirea.</li>
     </ul>
 
-    <h2>8. Modelul 3D (Simulator 3D)</h2>
-    <p>Vederea <b>Simulator 3D</b> rezolvă aceeași curgere incompresibilă și același transport de căldură, dar <b>volumetric</b> — cu o dimensiune verticală reală. Planul (48×32) e extrudat pe <code>D = round(H_tavan / scară)</code> straturi (limitat la 6–14), cu <code>h_z = H_tavan / D</code> metri pe celulă verticală. Pereții și geamurile sunt solide pe toată înălțimea; <b>ușa e o deschidere doar în partea de jos</b> (perete deasupra ei, ~2,1 m), iar podeaua și tavanul sunt limite fără scurgere.</p>
+    <h2>8. Modelul 3D (opțiunea „Model fizic: 3D”)</h2>
+    <p>În „Simulator”, la <b>Model fizic</b> poți alege „3D — flotabilitate”: atunci se rezolvă aceeași curgere incompresibilă și același transport de căldură, dar <b>volumetric</b> — cu o dimensiune verticală reală. Planul (48×32) e extrudat pe <code>D = round(H_tavan / scară)</code> straturi (limitat la 6–14), cu <code>h_z = H_tavan / D</code> metri pe celulă verticală. Pereții și geamurile sunt solide pe toată înălțimea; <b>ușa e o deschidere doar în partea de jos</b> (perete deasupra ei, ~2,1 m), iar podeaua și tavanul sunt limite fără scurgere.</p>
     <p>Noutatea fizică, absentă în 2D, e <b>flotabilitatea</b> (aproximație Boussinesq): o forță verticală proporțională cu abaterea de la temperatura medie împinge aerul rece în jos și pe cel cald în sus.</p>
     <div class="eq">∂u/∂t + (u·∇)u = −∇p/ρ + f_ventilator + f_flotabilitate − DRAG·u
 f_flotabilitate = g·β·(T − T_ref) · ẑ        (ẑ = în sus)
 ∇·u = 0   (proiecție de presiune 3D, Gauss–Seidel cu 6 vecini)</div>
-    <p>Consecințe pe care le vezi: aerul rece de la unitate (montată sus, lângă tavan) e aruncat orizontal, se răcește, apoi <b>coboară și se adună la nivelul podelei</b> (stratificare — podeaua mai rece decât tavanul); iar aerul rece <b>curge prin golul ușii</b> la nivelul podelei în camera vecină. Advecția e tot semi-Lagrangiană, dar triliniară și mărginită, deci temperaturile rămân între aerul suflat și cel ambiant și <b>nu trec prin pereți solizi</b>. Conducția prin anvelopă (pereți/geamuri) e la fel ca în 2D — tavanul și podeaua dau spre alte apartamente, deci nu pierd căldură. <b>Acoperirea de confort se măsoară în zona ocupată (≤ 1,8 m)</b>: aerul cald de sub tavan (normal, din stratificare) nu strică procentul. Vizualizarea: nor de voxeli colorați (aer răcit), o felie orizontală de temperatură mobilă pe înălțime și săgeți 3D de curent de aer; rotești cu mouse-ul.</p>
-    <p>Acest model 3D poate fi rulat și în <b>vederea de sus</b> obișnuită: în „Simulator", la <b>Model fizic</b> alegi „3D — flotabilitate". Atunci harta 2D arată o <b>felie orizontală</b> la înălțimea pe care o alegi din slider — de la podea la tavan — deci vezi stratificarea (rece jos, cald sus) cu aceeași animație 2D, dar cu fizica 3D dedesubt.</p>
+    <p>Consecințe pe care le vezi: aerul rece de la unitate (montată sus, lângă tavan) e aruncat orizontal, se răcește, apoi <b>coboară și se adună la nivelul podelei</b> (stratificare — podeaua mai rece decât tavanul); iar aerul rece <b>curge prin golul ușii</b> la nivelul podelei în camera vecină. Advecția e tot semi-Lagrangiană, dar triliniară și mărginită, deci temperaturile rămân între aerul suflat și cel ambiant și <b>nu trec prin pereți solizi</b>. Conducția prin anvelopă (pereți/geamuri) e la fel ca în 2D — tavanul și podeaua dau spre alte apartamente, deci nu pierd căldură. <b>Acoperirea de confort se măsoară în zona ocupată (≤ 1,8 m)</b>: aerul cald de sub tavan (normal, din stratificare) nu strică procentul.</p>
+    <p><b>Afișare:</b> se folosește aceeași animație 2D de sus care-ți e familiară — harta arată o <b>felie orizontală</b> la înălțimea aleasă din sliderul „Înălțime afișată”, pe care îl muți de la podea la tavan ca să vezi stratificarea (rece jos, cald sus). Deci: fizică 3D dedesubt, vedere 2D deasupra.</p>
     <p class="sym">Rezolvat pe grila de desen (fără subdiviziune orizontală) × 6–14 straturi verticale ≈ 10–20 mii de celule — rulează live în browser.</p>
 
     <h2>Limite ale modelului</h2>
@@ -2055,18 +1968,12 @@ const apiDelete=id=>api('DELETE','/api/plans/'+id);
 // --- comutare vederi (meniu) ---
 function setView(v){
   document.querySelectorAll('#menubar button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
-  const docs=(v==='docs'), three=(v==='sim3d');
-  // trei vederi de nivel inalt: 2D (simulator/editor), 3D, documentatie
-  $('wrap2d').style.display=(docs||three)?'none':'';
-  $('wrap3d').style.display=three?'':'none';
+  const docs=(v==='docs');
+  $('wrap2d').style.display=docs?'none':'';
   $('view-docs').style.display=docs?'':'none';
-  if(docs){stopRun(false);stop3D();
+  if(docs){stopRun(false);
     $('sub').textContent='Modelul fizic din spatele simulării: ecuațiile, constantele și limitele.';
     window.scrollTo(0,0);return;}
-  if(three){stopRun(false);
-    $('sub').textContent='Simulator 3D: model volumetric cu flotabilitate — aerul rece coboară, cel cald urcă, se stratifică pe înălțime și curge prin uși în camera vecină. Trage ca să rotești vederea.';
-    enter3D();return;}
-  stop3D();
   editorMode=(v==='editor');
   $('side-sim').style.display=editorMode?'none':'';
   $('side-editor').style.display=editorMode?'':'none';
@@ -2217,7 +2124,7 @@ async function refreshPlans(){
     it.append(nm,meta,ed,rm);list.appendChild(it);
   }
   // dropdown din simulator (2D) + simulator 3D
-  for(const selId of ['aptSelect','aptSelect3d']){
+  for(const selId of ['aptSelect']){
     const sel=$(selId); if(!sel)continue;
     const cur=sel.value;
     sel.innerHTML='';
@@ -2296,329 +2203,12 @@ document.getElementById('scale').addEventListener('input',()=>{if(running||temp)
 ['eNorth','eScale','eHeight'].forEach(id=>
   document.getElementById(id).addEventListener('input',()=>{if(editorMode)draw();}));
 
-// ==================== SIMULATOR 3D: viewer WebGL (Three.js) + controller ====================
-const sim3State={sim:null,running:false,paused:false,animId:0,time:0,hist:[],
-                 lastP:null,viewer:null,snapMean:99,snapTime:0};
-const DT3=0.75, SUB3=2, SIM3_MAX=5400;
-
-function readParams3D(){
-  const g=id=>document.getElementById(id).value;
-  return {btu:+g('btu3d'),setT:+g('setT3d'),fan:g('fan3d'),outT:+g('outT3d'),hour:g('hour3d'),
-          north:+($('north').value)||0, height:+g('height3d')||2.6,
-          scale:+($('scale').value)||0.33, thr:2};
-}
-// gama de culoare rece(albastru)→cald(portocaliu) pentru viewerul 3D — intoarce
-// [r,g,b] in 0..1. (Distinct de tempColor() din 2D, care intoarce string CSS.)
-function tempColor3(t,cold,warm){
-  const u=Math.max(0,Math.min(1,(t-cold)/Math.max(0.001,warm-cold)));
-  let r,g,b;
-  if(u<0.5){const k=u/0.5; r=0.13+k*0.42; g=0.55+k*0.20; b=0.95-k*0.60;}
-  else{const k=(u-0.5)/0.5; r=0.55+k*0.43; g=0.75-k*0.30; b=0.35-k*0.23;}
-  return [r,g,b];
-}
-
-// ---------- viewer WebGL (creat lazy la prima intrare in vederea 3D) ----------
-function makeViewer3D(){
-  const canvas=$('cv3d'), holder=$('c3holder');
-  const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
-  renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
-  const scene=new THREE.Scene(); scene.background=new THREE.Color(0x0b1220);
-  const camera=new THREE.PerspectiveCamera(50,1.5,0.02,2000);
-  scene.add(new THREE.AmbientLight(0xffffff,0.85));
-  const dl=new THREE.DirectionalLight(0xffffff,0.4); dl.position.set(4,10,6); scene.add(dl);
-  const root=new THREE.Group(); scene.add(root);
-  const geomBox=new THREE.BoxGeometry(1,1,1);
-  let voxels=null,sliceMesh=null,sliceTex=null,arrows=null;
-  let fluidIdx=null,fluidPos=null,maxSeg=1800,curSlice=0,vwCold=22,vwWarm=35;
-  // scratch
-  const _m=new THREE.Matrix4(),_p=new THREE.Vector3(),_s=new THREE.Vector3(),
-        _q=new THREE.Quaternion(),_c=new THREE.Color();
-
-  // orbit camera custom (fara dependinte suplimentare)
-  let target=new THREE.Vector3(0,1,0),radius=8,theta=-0.7,phi=1.02;
-  function applyCam(){
-    const sp=Math.sin(phi),cp=Math.cos(phi);
-    camera.position.set(target.x+radius*sp*Math.sin(theta),
-                        target.y+radius*cp, target.z+radius*sp*Math.cos(theta));
-    camera.lookAt(target);
-  }
-  let drag=null;
-  canvas.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,shift:e.shiftKey};try{canvas.setPointerCapture(e.pointerId);}catch(_){}});
-  canvas.addEventListener('pointermove',e=>{
-    if(!drag)return; const dx=e.clientX-drag.x,dy=e.clientY-drag.y; drag.x=e.clientX;drag.y=e.clientY;
-    if(drag.shift){
-      const ps=radius*0.0016;
-      const right=new THREE.Vector3().subVectors(camera.position,target).cross(camera.up).normalize();
-      target.addScaledVector(right,-dx*ps); target.addScaledVector(camera.up.clone(),dy*ps);
-    }else{ theta-=dx*0.008; phi=Math.max(0.08,Math.min(Math.PI-0.08,phi-dy*0.008)); }
-    applyCam();
-  });
-  const endDrag=()=>{drag=null;};
-  canvas.addEventListener('pointerup',endDrag); canvas.addEventListener('pointercancel',endDrag);
-  canvas.addEventListener('wheel',e=>{e.preventDefault();radius=Math.max(1,Math.min(80,radius*(e.deltaY>0?1.1:0.9)));applyCam();},{passive:false});
-
-  function resize(){
-    const w=holder.clientWidth||720,h=holder.clientHeight||480;
-    renderer.setSize(w,h,false); camera.aspect=w/Math.max(1,h); camera.updateProjectionMatrix();
-  }
-  function render(){renderer.render(scene,camera);}
-
-  function rebuild(sim,P){
-    vwCold=P.setT-2; vwWarm=P.outT;
-    while(root.children.length)root.remove(root.children[0]);
-    if(sliceTex){sliceTex.dispose();sliceTex=null;}
-    const {W,H,D,scale,hz,height,FL,si}=sim;
-    const ox=W*scale/2, oz=H*scale/2;
-    const worldOf=(x,y,z)=>[(x+0.5)*scale-ox,(z+0.5)*hz,(y+0.5)*scale-oz];
-    // podea
-    const floor=new THREE.Mesh(new THREE.PlaneGeometry(W*scale,H*scale),
-                new THREE.MeshBasicMaterial({color:0x111a2e}));
-    floor.rotation.x=-Math.PI/2; root.add(floor);
-    // bbox interior (stratul de jos)
-    let x0=W,y0=H,x1=-1,y1=-1;
-    for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(FL[si(x,y,0)]){
-      if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
-    if(x1<0){x0=0;y0=0;x1=W-1;y1=H-1;}
-    // pereti + geamuri (in jurul bbox), boxuri semi-transparente ca sa se vada interiorul
-    const wallM=[],winM=[];
-    for(let y=Math.max(0,y0-1);y<=Math.min(H-1,y1+1);y++)
-      for(let x=Math.max(0,x0-1);x<=Math.min(W-1,x1+1);x++){
-        const g=grid[idx(x,y)];
-        if(g===WALL)wallM.push([x,y]); else if(g===WIN)winM.push([x,y]);
-      }
-    const mkBoxes=(list,color,op)=>{
-      if(!list.length)return;
-      const im=new THREE.InstancedMesh(geomBox,
-        new THREE.MeshBasicMaterial({color,transparent:true,opacity:op,depthWrite:false}),list.length);
-      for(let n=0;n<list.length;n++){const[x,y]=list[n],wp=worldOf(x,y,0);
-        _p.set(wp[0],height/2,wp[2]); _s.set(scale,height,scale); _m.compose(_p,_q,_s); im.setMatrixAt(n,_m);}
-      im.instanceMatrix.needsUpdate=true; im.renderOrder=1; root.add(im);
-    };
-    mkBoxes(wallM,0x64748b,0.20); mkBoxes(winM,0x7dd3fc,0.34);
-    // voxeli (aer racit)
-    fluidIdx=[]; const fp=[];
-    for(let z=0;z<D;z++)for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=si(x,y,z);
-      if(FL[i]){fluidIdx.push(i);const wp=worldOf(x,y,z);fp.push(wp[0],wp[1],wp[2]);}}
-    fluidPos=new Float32Array(fp);
-    voxels=new THREE.InstancedMesh(geomBox,
-      new THREE.MeshBasicMaterial({transparent:true,opacity:0.5,depthWrite:false}),fluidIdx.length||1);
-    voxels.frustumCulled=false; voxels.renderOrder=2;
-    _c.setRGB(0.2,0.5,0.9); for(let n=0;n<fluidIdx.length;n++)voxels.setColorAt(n,_c);
-    root.add(voxels);
-    // felia orizontala (heatmap la inaltimea aleasa)
-    const sd=new Uint8Array(W*H*4);
-    sliceTex=new THREE.DataTexture(sd,W,H,THREE.RGBAFormat); sliceTex.needsUpdate=true;
-    sliceMesh=new THREE.Mesh(new THREE.PlaneGeometry(W*scale,H*scale),
-      new THREE.MeshBasicMaterial({map:sliceTex,transparent:true,opacity:0.92,side:THREE.DoubleSide,depthWrite:false}));
-    sliceMesh.rotation.x=-Math.PI/2; sliceMesh.renderOrder=3; root.add(sliceMesh);
-    curSlice=Math.min(curSlice,D-1); sliceMesh.position.y=(curSlice+0.5)*hz;
-    // curenti de aer (segmente)
-    const apos=new Float32Array(maxSeg*2*3);
-    const ag=new THREE.BufferGeometry(); ag.setAttribute('position',new THREE.BufferAttribute(apos,3)); ag.setDrawRange(0,0);
-    arrows=new THREE.LineSegments(ag,new THREE.LineBasicMaterial({color:0xbfe6ff,transparent:true,opacity:0.5}));
-    arrows.frustumCulled=false; arrows.renderOrder=4; root.add(arrows);
-    // incadrare camera pe apartament
-    const cw=worldOf((x0+x1)/2,(y0+y1)/2,0);
-    target.set(cw[0],height*0.45,cw[2]);
-    radius=Math.max((x1-x0+2)*scale,(y1-y0+2)*scale,height)*1.5+1;
-    applyCam();
-  }
-  function updateSliceTexture(sim){
-    if(!sliceTex)return; const {T,FL,W,H,STR}=sim,z=curSlice,data=sliceTex.image.data;
-    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-      const o=(y*W+x)*4, i=z*STR+y*W+x;
-      if(FL[i]){const c=tempColor3(T[i],vwCold,vwWarm);
-        data[o]=c[0]*255;data[o+1]=c[1]*255;data[o+2]=c[2]*255;data[o+3]=205;}
-      else data[o+3]=0;
-    }
-    sliceTex.needsUpdate=true;
-  }
-  function updateArrows(sim){
-    if(!arrows)return; const {u,v,w,FL,W,H,D,STR,scale,hz}=sim;
-    const pos=arrows.geometry.attributes.position.array; let n=0; const k=0.32;
-    const ox=W*scale/2,oz=H*scale/2;
-    for(let z=0;z<D;z+=2)for(let y=0;y<H;y+=2)for(let x=0;x<W;x+=2){
-      const i=z*STR+y*W+x; if(!FL[i])continue;
-      const sp=Math.hypot(u[i],v[i],w[i]); if(sp<0.05)continue;
-      if(n+2>maxSeg*2)break;
-      const wx=(x+0.5)*scale-ox, wy=(z+0.5)*hz, wz=(y+0.5)*scale-oz;
-      pos[n*3]=wx;pos[n*3+1]=wy;pos[n*3+2]=wz;n++;
-      pos[n*3]=wx+u[i]*k;pos[n*3+1]=wy+w[i]*k;pos[n*3+2]=wz+v[i]*k;n++;
-    }
-    arrows.geometry.setDrawRange(0,n); arrows.geometry.attributes.position.needsUpdate=true;
-  }
-  function updateField(sim){
-    if(!voxels)return; const {T,scale,hz}=sim;
-    for(let n=0;n<fluidIdx.length;n++){
-      const t=T[fluidIdx[n]];
-      const inten=Math.max(0,Math.min(1,(vwWarm-t)/Math.max(0.5,vwWarm-vwCold)));
-      const sc=0.06+0.94*inten;
-      _p.set(fluidPos[3*n],fluidPos[3*n+1],fluidPos[3*n+2]);
-      _s.set(scale*0.86*sc,hz*0.86*sc,scale*0.86*sc);
-      _m.compose(_p,_q,_s); voxels.setMatrixAt(n,_m);
-      const c=tempColor3(t,vwCold,vwWarm); _c.setRGB(c[0],c[1],c[2]); voxels.setColorAt(n,_c);
-    }
-    voxels.instanceMatrix.needsUpdate=true; if(voxels.instanceColor)voxels.instanceColor.needsUpdate=true;
-    updateSliceTexture(sim); updateArrows(sim);
-  }
-  function setSlice(z,sim){ curSlice=z; if(sliceMesh)sliceMesh.position.y=(z+0.5)*sim.hz; updateSliceTexture(sim); }
-  return {resize,render,rebuild,updateField,setSlice};
-}
-
-// ---------- controller 3D ----------
-function enter3D(){
-  if(!window.THREE){$('c3loading').style.display='';
-    $('c3loading').textContent='Nu s-a putut încărca Three.js (verifică rețeaua).'; return;}
-  $('c3loading').style.display='none';
-  if(!sim3State.viewer)sim3State.viewer=makeViewer3D();
-  sim3State.viewer.resize();
-  // reconstruieste din planul curent daca nu ruleaza deja (poate fi schimbat din 2D);
-  // sincronizeaza inaltimea 3D cu cea a apartamentului incarcat
-  if(!sim3State.running){
-    const h=+($('height').value); if(h)$('height3d').value=h;
-    build3DFromCurrent(false);
-  }
-  start3DLoop();
-}
-function stop3D(){ stop3DLoop(); sim3State.running=false; sim3State.paused=false; set3DButtons(); }
-function start3DLoop(){ if(sim3State.animId)return;
-  const f=()=>{ frame3(); sim3State.animId=requestAnimationFrame(f); }; sim3State.animId=requestAnimationFrame(f); }
-function stop3DLoop(){ if(sim3State.animId){cancelAnimationFrame(sim3State.animId);sim3State.animId=0;} }
-
-function frame3(){
-  const v=sim3State.viewer; if(!v)return;
-  if(sim3State.running&&!sim3State.paused&&sim3State.sim){
-    for(let k=0;k<SUB3;k++){sim3State.sim.step(DT3);sim3State.time+=DT3;}
-    v.updateField(sim3State.sim);
-    update3DStats();
-    sim3State.hist.push({t:sim3State.time,cov:sim3State.sim.coverage(sim3State.lastP.setT+sim3State.lastP.thr)*100});
-    draw3DTimeline(false);
-    // convergenta: schimbare mica a mediei pe ultimul minut simulat
-    let done=sim3State.time>=SIM3_MAX;
-    if(!done&&sim3State.time-sim3State.snapTime>=60){
-      const m=sim3State.sim.stats().mean;
-      if(sim3State.time>300&&Math.abs(m-sim3State.snapMean)<0.03)done=true;
-      sim3State.snapMean=m; sim3State.snapTime=sim3State.time;
-    }
-    if(done)finish3D();
-  }
-  v.render();
-}
-
-function build3DFromCurrent(run){
-  const v=sim3State.viewer; if(!v)return;
-  const P=readParams3D(); sim3State.lastP=P;
-  sim3State.sim=buildSim3D(P);
-  sim3State.time=0; sim3State.hist=[]; sim3State.snapMean=99; sim3State.snapTime=0;
-  v.rebuild(sim3State.sim,P);
-  const sl=$('slice3d'); sl.max=sim3State.sim.D-1;
-  if(+sl.value>sim3State.sim.D-1)sl.value=Math.floor((sim3State.sim.D-1)/3);
-  updateSliceLabel();
-  v.setSlice(+sl.value,sim3State.sim);
-  v.updateField(sim3State.sim);
-  const vol=(sim3State.sim.nFluid*P.scale*P.scale*sim3State.sim.hz).toFixed(1);
-  $('vol3d').textContent=vol+' m³';
-  update3DStats();
-  sim3State.running=!!run; sim3State.paused=false;
-  set3DButtons();
-}
-function startRun3(){
-  const msg=$('msg3d');
-  if(!countAC()){msg.textContent='Pune o unitate AC (în „Simulator” sau „Editor plan”), apoi rulează.';return;}
-  if(!enclosureOK()){msg.textContent='⚠ Spațiul nu e închis ermetic — închide-l în „Editor plan” și rulează din nou.';return;}
-  build3DFromCurrent(true);
-  $('tlwrap3d').style.display=''; draw3DTimeline(false);
-  msg.textContent='Simulare 3D live — trage ca să rotești, mișcă felia ca să vezi stratificarea.';
-}
-function stopRun3(finalize){
-  sim3State.running=false; sim3State.paused=false; set3DButtons();
-  if(finalize)draw3DTimeline(true);
-}
-function finish3D(){
-  sim3State.running=false; sim3State.paused=false; set3DButtons(); draw3DTimeline(true);
-  const st=sim3State.sim.stats();
-  $('msg3d').textContent=`Echilibru la min ${Math.round(sim3State.time/60)} — medie ${st.mean.toFixed(1)}°C, stratificare ${(st.ceil-st.floor).toFixed(1)}°C între podea și tavan.`;
-}
-function set3DButtons(){
-  const hasSim=!!sim3State.sim;
-  $('run3d').textContent=sim3State.running?'■ Oprește simularea':'▶ Rulează simularea 3D';
-  $('pause3d').disabled=!sim3State.running;
-  $('pause3d').textContent=sim3State.paused?'▶ Continuă':'⏸ Pauză';
-  $('reset3d').disabled=!hasSim;
-}
-function updateSliceLabel(){
-  const sim=sim3State.sim; const z=+$('slice3d').value;
-  if(sim){const m=((z+0.5)*sim.hz).toFixed(2); $('sliceV').textContent=`${m} m (strat ${z+1}/${sim.D})`;}
-}
-function update3DStats(){
-  const sim=sim3State.sim,P=sim3State.lastP; if(!sim||!P)return;
-  const st=sim.stats(), cov=Math.round(sim.coverage(P.setT+P.thr)*100);
-  const cv=$('cov3d'); cv.textContent=cov+'%';
-  cv.className='big '+(cov>=80?'cov-good':cov>=55?'cov-mid':'cov-bad');
-  $('mean3d').textContent=st.mean.toFixed(1)+' °C';
-  $('strat3d').textContent=`${st.floor.toFixed(1)} → ${st.ceil.toFixed(1)} °C (Δ ${(st.ceil-st.floor).toFixed(1)})`;
-  $('mm3d').textContent=`${st.min.toFixed(1)} / ${st.max.toFixed(1)} °C`;
-}
-function draw3DTimeline(done){
-  const c=$('tl3d'); if(!c)return; const g=c.getContext('2d');
-  const W=c.width,H=c.height,L=34,R=W-8,axY=H-16;
-  g.clearRect(0,0,W,H);
-  const X=t=>L+(R-L)*Math.min(1,t/SIM3_MAX), Y=v=>axY-(axY-16)*Math.min(1,v/100);
-  g.strokeStyle='#334155'; g.beginPath(); g.moveTo(L,axY); g.lineTo(R,axY); g.stroke();
-  g.fillStyle='#64748b'; g.font='10px sans-serif'; g.textAlign='center';
-  for(let m=0;m<=SIM3_MAX/60;m+=15){const x=X(m*60);
-    g.beginPath();g.moveTo(x,axY);g.lineTo(x,axY+4);g.stroke();g.fillText(m+"'",x,axY+13);}
-  g.textAlign='left'; g.fillText('timp simulat →',L,10);
-  g.textAlign='right'; g.fillText('acoperire confort %',R,10);
-  const hist=sim3State.hist;
-  if(hist.length>1){g.strokeStyle='#38bdf8';g.lineWidth=1.6;g.beginPath();
-    for(let i=0;i<hist.length;i++){const x=X(hist[i].t),y=Y(hist[i].cov);i?g.lineTo(x,y):g.moveTo(x,y);}g.stroke();}
-  if(hist.length){const p=hist[hist.length-1],x=X(p.t);
-    g.strokeStyle=done?'#22c55e':'#f59e0b';g.lineWidth=1.2;g.beginPath();g.moveTo(x,14);g.lineTo(x,axY);g.stroke();
-    const mm=Math.floor(p.t/60),ss=Math.round(p.t%60);
-    g.fillStyle='#e2e8f0';const right=x>R-130;g.textAlign=right?'right':'left';
-    g.fillText((done?`echilibru min ${mm}`:`min ${mm}:${String(ss).padStart(2,'0')}`)+` — ${p.cov.toFixed(0)}%`,x+(right?-6:6),20);}
-}
-
-// ---------- wiring 3D ----------
-$('run3d').onclick=()=>{ sim3State.running?stopRun3(true):startRun3(); };
-$('pause3d').onclick=()=>{ if(!sim3State.running)return; sim3State.paused=!sim3State.paused;
-  set3DButtons(); if(!sim3State.paused)$('msg3d').textContent='Simulare 3D live…';
-  else $('msg3d').textContent='Pauză — mișcă felia sau rotește vederea.'; };
-$('reset3d').onclick=()=>{ build3DFromCurrent(false); $('msg3d').textContent='Resetat la temperatura de afară.'; };
-$('slice3d').oninput=()=>{ updateSliceLabel(); if(sim3State.viewer&&sim3State.sim)sim3State.viewer.setSlice(+$('slice3d').value,sim3State.sim); };
-$('demo3d').onclick=()=>{ demo(); $('aptSelect3d').value=''; build3DFromCurrent(false);
-  $('msg3d').textContent='Exemplu încărcat: 2 dormitoare + living. Apasă „Rulează”.'; };
-$('aptSelect3d').onchange=async()=>{
-  const id=$('aptSelect3d').value;
-  sim3State.running=false; sim3State.paused=false;
-  if(!id){$('aptHint3d').textContent='Desen liber. Alege un apartament salvat.'; return;}
-  try{
-    const p=await apiGet(id);
-    grid=strToGrid(p.grid);
-    $('north').value=p.north; $('scale').value=String(p.scale); $('height').value=p.height;
-    $('height3d').value=p.height;
-    $('aptHint3d').textContent=`„${p.name}” încărcat (nord ${p.north}°, scară ${p.scale} m/celulă, h ${p.height} m).`;
-    build3DFromCurrent(false);
-    $('msg3d').textContent='Apartament încărcat. Apasă „Rulează”.';
-  }catch(err){$('aptHint3d').textContent='Eroare la încărcare: '+err.message;}
-};
-// re-construieste (fara sa ruleze) la schimbarea setarilor de mediu/AC
-['btu3d','setT3d','fan3d','outT3d','hour3d'].forEach(id=>
-  $(id).addEventListener('change',()=>{ if(sim3State.viewer)build3DFromCurrent(false); }));
-$('height3d').addEventListener('input',()=>{ $('height').value=$('height3d').value;
-  if(sim3State.viewer)build3DFromCurrent(false); });
-window.addEventListener('resize',()=>{ if(sim3State.viewer&&$('wrap3d').style.display!=='none')sim3State.viewer.resize(); });
-
 // presetari (raspunsurile tale)
 function preset(id,v){document.getElementById(id).value=v;}
 preset('btu','9000');preset('setT','24');preset('fan','sleep');
 preset('outT','35');preset('hour','afternoon');preset('scale','0.33');
 document.getElementById('north').value='0';
 document.getElementById('thV').textContent=document.getElementById('th').value;
-// presetari simulator 3D (aceleasi ca 2D)
-preset('btu3d','9000');preset('setT3d','24');preset('fan3d','sleep');
-preset('outT3d','35');preset('hour3d','afternoon');preset('height3d','2.6');
 
 tool='ac';        // pornim in simulator cu unealta „Adaugă AC”
 demo();

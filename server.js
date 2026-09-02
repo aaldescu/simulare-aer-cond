@@ -79,10 +79,7 @@ app.delete('/api/plans/:id', (req, res) => {
   res.json({ deleted: deletePlan(Number(req.params.id)) });
 });
 
-// --- frontend: index.html + bibliotecile vendorizate (nu tot directorul) ---
-app.use('/vendor', express.static(join(__dirname, 'vendor'), {
-  maxAge: '30d', immutable: true,   // three.min.js e fix (versiune pinuită)
-}));
+// --- frontend: servim doar index.html, nu tot directorul (nu expunem server.js) ---
 app.get('/', (req, res) => res.sendFile(join(__dirname, 'index.html')));
 
 app.listen(PORT, () => console.log(`Simulare aer cond -> http://localhost:${PORT}`));
