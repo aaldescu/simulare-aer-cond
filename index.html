@@ -2185,8 +2185,9 @@ function readParams3D(){
           north:+($('north').value)||0, height:+g('height3d')||2.6,
           scale:+($('scale').value)||0.33, thr:2};
 }
-// gama de culoare rece(albastru)→cald(portocaliu), aceeasi ca legenda
-function tempColor(t,cold,warm){
+// gama de culoare rece(albastru)→cald(portocaliu) pentru viewerul 3D — intoarce
+// [r,g,b] in 0..1. (Distinct de tempColor() din 2D, care intoarce string CSS.)
+function tempColor3(t,cold,warm){
   const u=Math.max(0,Math.min(1,(t-cold)/Math.max(0.001,warm-cold)));
   let r,g,b;
   if(u<0.5){const k=u/0.5; r=0.13+k*0.42; g=0.55+k*0.20; b=0.95-k*0.60;}
@@ -2304,7 +2305,7 @@ function makeViewer3D(){
     if(!sliceTex)return; const {T,FL,W,H,STR}=sim,z=curSlice,data=sliceTex.image.data;
     for(let y=0;y<H;y++)for(let x=0;x<W;x++){
       const o=(y*W+x)*4, i=z*STR+y*W+x;
-      if(FL[i]){const c=tempColor(T[i],vwCold,vwWarm);
+      if(FL[i]){const c=tempColor3(T[i],vwCold,vwWarm);
         data[o]=c[0]*255;data[o+1]=c[1]*255;data[o+2]=c[2]*255;data[o+3]=205;}
       else data[o+3]=0;
     }
@@ -2333,7 +2334,7 @@ function makeViewer3D(){
       _p.set(fluidPos[3*n],fluidPos[3*n+1],fluidPos[3*n+2]);
       _s.set(scale*0.86*sc,hz*0.86*sc,scale*0.86*sc);
       _m.compose(_p,_q,_s); voxels.setMatrixAt(n,_m);
-      const c=tempColor(t,vwCold,vwWarm); _c.setRGB(c[0],c[1],c[2]); voxels.setColorAt(n,_c);
+      const c=tempColor3(t,vwCold,vwWarm); _c.setRGB(c[0],c[1],c[2]); voxels.setColorAt(n,_c);
     }
     voxels.instanceMatrix.needsUpdate=true; if(voxels.instanceColor)voxels.instanceColor.needsUpdate=true;
     updateSliceTexture(sim); updateArrows(sim);
