@@ -6,12 +6,18 @@ bază de date SQLite.
 
 ## Ce face
 
-- **Simulator** — desenezi planul (pereți, uși, ferestre, unitate AC) și rulezi
-  o simulare fizică în timp real: câmp de viteze rezolvat (advecție + proiecție
-  de presiune), jet de aer rece cu buget de energie și termostat, conducție prin
-  anvelopă, aport solar prin ferestre. Vezi harta de temperatură, curenții de
-  aer, axa timpului cu acoperirea de confort, pauză + citire de temperaturi pe
-  dale, și găsirea automată a poziției optime pentru AC.
+- **Simulator (2D)** — desenezi planul (pereți, uși, ferestre, unitate AC) și
+  rulezi o simulare fizică în timp real (vedere de sus): câmp de viteze rezolvat
+  (advecție + proiecție de presiune), jet de aer rece cu buget de energie și
+  termostat, conducție prin anvelopă, aport solar prin ferestre. Vezi harta de
+  temperatură, curenții de aer, axa timpului cu acoperirea de confort, pauză +
+  citire de temperaturi pe dale, și găsirea automată a poziției optime pentru AC.
+- **Simulator 3D** — aceeași fizică, dar **volumetrică**: planul e extrudat pe
+  înălțime (6–14 straturi, după înălțimea tavanului) și se adaugă
+  **flotabilitatea** (Boussinesq) — aerul rece coboară, cel cald urcă, se
+  stratifică pe înălțime și curge prin golul ușii la nivelul podelei în camera
+  vecină. Viewer WebGL (Three.js): nor de voxeli de aer răcit, o felie de
+  temperatură mobilă pe înălțime și săgeți 3D de curenți; rotești cu mouse-ul.
 - **Editor plan** — încarci poza unui apartament ca fundal (cu slider de
   opacitate), desenezi planul peste ea, setezi proprietățile apartamentului
   (nord ca azimut 0–360°, înălțime tavan, scară) și salvezi. Planurile salvate
@@ -86,9 +92,11 @@ docker run -p 3000:3000 -v simulare-data:/app/data simulare-aer-cond
 
 ## Structură
 
-- `index.html` — tot frontend-ul (simulator + editor), într-un singur fișier
-- `server.js` — server Express: servește frontend-ul + API-ul REST
+- `index.html` — tot frontend-ul (simulator 2D + 3D + editor), într-un singur fișier
+- `server.js` — server Express: servește frontend-ul, `/vendor` și API-ul REST
 - `db.js` — accesul la SQLite (`node:sqlite`)
+- `vendor/three.min.js` — Three.js (r128), vendorizat local pentru viewerul 3D
+  (fără CDN, ca aplicația să fie autonomă)
 - `data/` — baza de date (creată la rulare, ignorată de git)
 
 > Notă: partea de **editor / salvare planuri** are nevoie de server. Deschis ca
