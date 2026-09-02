@@ -428,7 +428,7 @@ f = 0.15 + 0.85·cos(Δ)   dacă cos(Δ) > 0 ,  altfel 0.15</div>
     <div class="eq">∂u/∂t + (u·∇)u = −∇p/ρ + f_ventilator + f_flotabilitate − DRAG·u
 f_flotabilitate = g·β·(T − T_ref) · ẑ        (ẑ = în sus)
 ∇·u = 0   (proiecție de presiune 3D, Gauss–Seidel cu 6 vecini)</div>
-    <p>Consecințe pe care le vezi: aerul rece de la unitate (montată sus, lângă tavan) e aruncat orizontal, se răcește, apoi <b>coboară și se adună la nivelul podelei</b> (stratificare — podeaua mai rece decât tavanul); iar aerul rece <b>curge prin golul ușii</b> la nivelul podelei în camera vecină. Advecția e tot semi-Lagrangiană, dar triliniară și mărginită, deci temperaturile rămân între aerul suflat și cel ambiant și <b>nu trec prin pereți solizi</b>. În plus față de conducția laterală, se adaugă schimb prin <b>acoperiș</b> (U ≈ 0,4) și <b>placă</b> (U ≈ 0,3 W/m²·K). Vizualizarea: nor de voxeli colorați (aer răcit), o felie orizontală de temperatură mobilă pe înălțime și săgeți 3D de curent de aer; rotești cu mouse-ul.</p>
+    <p>Consecințe pe care le vezi: aerul rece de la unitate (montată sus, lângă tavan) e aruncat orizontal, se răcește, apoi <b>coboară și se adună la nivelul podelei</b> (stratificare — podeaua mai rece decât tavanul); iar aerul rece <b>curge prin golul ușii</b> la nivelul podelei în camera vecină. Advecția e tot semi-Lagrangiană, dar triliniară și mărginită, deci temperaturile rămân între aerul suflat și cel ambiant și <b>nu trec prin pereți solizi</b>. Conducția prin anvelopă (pereți/geamuri) e la fel ca în 2D — tavanul și podeaua dau spre alte apartamente, deci nu pierd căldură. <b>Acoperirea de confort se măsoară în zona ocupată (≤ 1,8 m)</b>: aerul cald de sub tavan (normal, din stratificare) nu strică procentul. Vizualizarea: nor de voxeli colorați (aer răcit), o felie orizontală de temperatură mobilă pe înălțime și săgeți 3D de curent de aer; rotești cu mouse-ul.</p>
     <p class="sym">Rezolvat pe grila de desen (fără subdiviziune orizontală) × 6–14 straturi verticale ≈ 10–20 mii de celule — rulează live în browser.</p>
 
     <h2>Limite ale modelului</h2>
@@ -954,9 +954,10 @@ function buildSim(sf,P,iters){
 // urca, deci apare stratificarea pe inaltime, iar aerul rece „curge” la nivelul
 // podelei prin golul usii in camera vecina. Peretii/geamurile sunt solizi pe toata
 // inaltimea; usa e o deschidere doar in partea de jos (perete deasupra ei).
-const G_BUOY=0.02;               // acceleratie de flotabilitate pe grad (g·β, calibrat)
+const G_BUOY=0.012;              // acceleratie de flotabilitate pe grad (g·β, calibrat):
+                                 // destul cat aerul rece sa coboare/stratifice si sa curga
+                                 // prin usa, dar nu atat cat sa blocheze racirea camerei
 const DRAG3=0.20;                // 1/s frecare vascoasa (limiteaza vitezele)
-const U_ROOF=0.4, U_FLOOR=0.3;   // W/(m²·K) conductie pe verticala (acoperis / placa)
 function buildSim3D(P){
   const W=COLS,H=ROWS,STR=W*H;
   const scale=P.scale||scaleM();
@@ -1010,8 +1011,9 @@ function buildSim3D(P){
       const UA=(r.win?U_WIN:U_WALL)*hz*scale;
       for(let z=0;z<D;z++){const i=si(x,y,z);if(!S[i])cond.push([i,UA]);}
     }
-    const it=si(x,y,D-1); if(!S[it])cond.push([it,U_ROOF*scale*scale]);
-    const ib=si(x,y,0);   if(!S[ib])cond.push([ib,U_FLOOR*scale*scale]);
+    // (fara conductie prin acoperis/placa: la un apartament de bloc, tavanul si
+    //  podeaua dau spre alte apartamente conditionate — pierdere neglijabila. Asa
+    //  sarcina anvelopei ramane consistenta cu modelul 2D.)
   }
   // ---- aport solar prin ferestrele orientate spre soare (distribuit pe inaltime) ----
   const sun=SUN_DEG[P.hour],solar=[];let solarW=0;
@@ -1045,14 +1047,25 @@ function buildSim3D(P){
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
     if(gcol(x,y)!==AC)continue;
     const dir=isWall(x,y-1)?[0,1]:isWall(x,y+1)?[0,-1]:isWall(x-1,y)?[1,0]:isWall(x+1,y)?[-1,0]:[0,1];
-    const lane=[],supply=[];
+    const lane=[],patchSet=new Set();
     for(let d=0;d<8;d++){
       const cx=x+dir[0]*d, cy=y+dir[1]*d;
       if(cx<0||cy<0||cx>=W||cy>=H)break;
       const cg=gcol(cx,cy); if(cg===WALL||cg===WIN)break;
-      for(let z=zHi;z<D;z++){const i=si(cx,cy,z);if(!S[i]){lane.push(i);if(d<=1)supply.push(i);}}
+      // culoarul jetului: forta ventilatorului, pe axa, straturile de sus
+      for(let z=zHi;z<D;z++){const i=si(cx,cy,z);if(!S[i])lane.push(i);}
+      // zona de schimb termic (extractie): primele ~5 celule in fata, latime ±1,
+      // pe straturile de sus — destul de mare ca sa livreze puterea nominala fara
+      // sa se supra-raceasca local (altfel se blocheaza langa unitate)
+      if(d<5)for(let l=-1;l<=1;l++){
+        const px=cx+(dir[1]!==0?l:0), py=cy+(dir[0]!==0?l:0);
+        if(px<0||py<0||px>=W||py>=H)continue;
+        const pg=gcol(px,py); if(pg===WALL||pg===WIN)continue;
+        for(let z=zHi;z<D;z++){const i=si(px,py,z);if(!S[i])patchSet.add(i);}
+      }
     }
-    if(lane.length)units.push({dir,lane,supply:supply.length?supply:lane,room:null});
+    const patch=[...patchSet];
+    if(lane.length)units.push({dir,lane,supply:patch.length?patch:lane,room:null});
   }
   // camera conectata la fiecare unitate (flood 3D prin aer — include golul usii)
   for(const un of units){
@@ -1181,7 +1194,8 @@ function buildSim3D(P){
     // advectia temperaturii (marginita => nu coboara sub aerul suflat, nu trece prin pereti)
     T0.set(T); advect(T,T0,dt);
     // flotabilitate (Boussinesq): forta verticala ∝ (T − T_ref); rece coboara, cald urca
-    for(let i=0;i<N;i++){ if(!FL[i]){u[i]=v[i]=w[i]=0;continue;} w[i]+=G_BUOY*(T[i]-mref)*dt; }
+    const gb=(typeof window!=='undefined'&&window.GB3!=null)?window.GB3:G_BUOY;
+    for(let i=0;i<N;i++){ if(!FL[i]){u[i]=v[i]=w[i]=0;continue;} w[i]+=gb*(T[i]-mref)*dt; }
     // frecare, advectia vitezei, proiectie de presiune (incompresibilitate 3D)
     const dd=Math.exp(-DRAG3*dt);
     for(let i=0;i<N;i++)if(FL[i]){u[i]*=dd;v[i]*=dd;w[i]*=dd;}
@@ -1190,7 +1204,14 @@ function buildSim3D(P){
     project(PITERS);
     for(let i=0;i<N;i++)if(!FL[i]){u[i]=v[i]=w[i]=0;}
   }
-  function coverage(warm){let c=0,t=0;for(let i=0;i<N;i++)if(FL[i]){t++;if(T[i]<=warm)c++;}return t?c/t:0;}
+  // acoperirea se masoara in ZONA OCUPATA (≤1,8 m) — acolo stau oamenii; aerul cald
+  // de sub tavan (normal, prin stratificare) nu conteaza pentru confort si nu trebuie
+  // sa „strice” procentul
+  const zOcc=Math.max(0,Math.min(D-1,Math.floor(1.8/hz)));
+  function coverage(warm){let c=0,t=0;
+    for(let z=0;z<=zOcc;z++)for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+      const i=si(x,y,z); if(!FL[i])continue; t++; if(T[i]<=warm)c++;}
+    return t?c/t:0;}
   function stats(){
     let mn=1e9,mx=-1e9,sum=0,t=0,bot=0,bc=0,top=0,tc=0;
     for(let z=0;z<D;z++)for(let y=0;y<H;y++)for(let x=0;x<W;x++){
