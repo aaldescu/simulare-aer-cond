@@ -286,7 +286,7 @@
     <h2>2. Transportul căldurii</h2>
     <p>Temperatura <code>T</code> e purtată de curgere și amestecată prin difuzie turbulentă:</p>
     <div class="eq">∂T/∂t + (u·∇)T = α·∇²T + (surse − extracție)</div>
-    <p>Difuzia e explicită (stabilă): <code>T[i] += a·(Σ T_vecini − n·T[i])</code>, cu <code>a = α·dt/h²</code>. Advecția temperaturii folosește același traseu semi-Lagrangian ca viteza. Un pas de corecție redistribuie reziduul numeric <b>per cameră</b> (componentă conexă de aer, ușile conectează, pereții despart), ca răcirea să nu se scurgă peste pereții interiori între camere neconectate.</p>
+    <p>Difuzia e explicită (stabilă): <code>T[i] += a·(Σ T_vecini − n·T[i])</code>, cu <code>a = α·dt/h²</code>. Advecția temperaturii folosește același traseu semi-Lagrangian ca viteza. Advecția semi-Lagrangiană e mărginită (interpolare convexă) — nu poate crea temperaturi sub aerul suflat de AC și nu trece peste pereți — deci răcirea ajunge în alte camere doar prin curgerea reală (ușile deschise), nu artificial peste ziduri.</p>
 
     <h2>3. Unitatea de aer condiționat (buget de energie + termostat)</h2>
     <p>AC-ul extrage căldură din zona din fața lui, plafonat de puterea în wați ȘI de debitul ventilatorului:</p>
@@ -502,25 +502,8 @@ function buildSim(sf,P,iters){
    for(let x=0;x<W;x++){pu(x,0);pu(x,H-1);}
    for(let y=0;y<H;y++){pu(0,y);pu(W-1,y);}
    while(st.length){const i=st.pop(),x=i%W,y=(i/W|0);pu(x+1,y);pu(x-1,y);pu(x,y+1);pu(x,y-1);}}
-  const inM=new Uint8Array(N);let nIn=0;
-  for(let i=0;i<N;i++)if(!S[i]&&!out[i]){inM[i]=1;nIn++;}
-  // etichetare pe regiuni: componente conexe de aer interior (peretii/geamurile
-  // despart, usile conecteaza). Corectia de conservare a energiei se face PER
-  // regiune, ca sa nu se scurga reziduul numeric intre camere neconectate.
-  const region=new Int32Array(N).fill(-1); let nRegions=0;
-  {const st=[];
-   for(let s0=0;s0<N;s0++){
-     if(!inM[s0]||region[s0]>=0)continue;
-     region[s0]=nRegions; st.length=0; st.push(s0);
-     while(st.length){const i=st.pop(),x=i%W,y=(i/W|0);
-       for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){
-         const nx=x+dx,ny=y+dy; if(nx<0||ny<0||nx>=W||ny>=H)continue;
-         const j=ny*W+nx; if(inM[j]&&region[j]<0){region[j]=nRegions;st.push(j);}}}
-     nRegions++;
-   }}
-  const regCount=new Float32Array(Math.max(1,nRegions));
-  for(let i=0;i<N;i++)if(inM[i])regCount[region[i]]++;
-  const regB=new Float32Array(Math.max(1,nRegions)), regA=new Float32Array(Math.max(1,nRegions));
+  const inM=new Uint8Array(N);
+  for(let i=0;i<N;i++)if(!S[i]&&!out[i])inM[i]=1;
   const DIRS=[[1,0],[-1,0],[0,1],[0,-1]];
   // cai de conductie: celula interioara lipita de un solid prin care se ajunge afara
   const cond=[],maxTh=2*sf+1;
@@ -805,9 +788,6 @@ function buildSim(sf,P,iters){
     for(const[c,ua]of cond){const q=dt*ua*(P.outT-T[c]);T[c]+=q/cellC;acct.condJ+=q;}
     for(const[c,w]of solar){T[c]+=dt*w/cellC;acct.solarJ+=dt*w;}
     acct.t+=dt;
-    // bilantul fazei de transport, PE FIECARE REGIUNE (difuzia+advectia conserva
-    // energia in interiorul unei camere; nu au voie sa treaca peste pereti)
-    regB.fill(0);for(let i=0;i<N;i++)if(inM[i])regB[region[i]]+=T[i];
     // difuzie turbulenta a temperaturii (explicit). La rezolutie mare h scade,
     // deci a=α·dt/h² creste; sub-ciclam ca sa ramana sub pragul de stabilitate (0.2)
     const aTot=ALPHA_T*dt/(h*h);
@@ -824,14 +804,12 @@ function buildSim(sf,P,iters){
         if(c)T[i]=T0[i]+a*(s-c*T0[i]);
       }
     }
-    // advectia temperaturii de catre curgere
+    // advectia temperaturii de catre curgere. Advectia semi-Lagrangiana e
+    // marginita (interpolare convexa) => nu poate crea temperaturi sub aerul
+    // suflat de AC si nu trece peste pereti; nu mai e nevoie de o corectie
+    // globala de conservare (care cupla artificial camerele si dadea valori
+    // nefizice, sub temperatura de suflare).
     T0.set(T); advect(T,T0,dt);
-    // corectie de conservare PER REGIUNE: reziduul numeric al transportului
-    // (esantionare langa pereti etc.) se redistribuie doar in camera lui, ca sa
-    // NU se scurga racirea peste peretii interiori catre camere neconectate
-    regA.fill(0);for(let i=0;i<N;i++)if(inM[i])regA[region[i]]+=T[i];
-    for(let r=0;r<nRegions;r++)regA[r]=regCount[r]?(regB[r]-regA[r])/regCount[r]:0;
-    for(let i=0;i<N;i++)if(inM[i])T[i]+=regA[region[i]];
     // frecare, advectia vitezei, proiectie de presiune (incompresibilitate)
     const d=Math.exp(-DRAG*dt);
     for(let i=0;i<N;i++){u[i]*=d;v[i]*=d;}
