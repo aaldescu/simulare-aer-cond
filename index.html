@@ -103,6 +103,7 @@
     <button data-view="sim" class="active">Simulator</button>
     <button data-view="editor">🏠 Editor plan</button>
     <button data-view="docs">📖 Model fizic</button>
+    <button data-open="/api/docs" title="Consola DEBUG/API: export/import planuri, hartă ASCII, OpenAPI (fereastră nouă)">🔧 API / Debug</button>
   </div>
 
   <div class="wrap" id="wrap2d">
@@ -1990,7 +1991,9 @@ function setView(v){
   CV.style.cursor=(editorMode&&tool==='pan')?'grab':'crosshair';
   draw();
 }
-$('menubar').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setView(b.dataset.view);});
+$('menubar').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.open){window.open(b.dataset.open,'_blank','noopener');return;}   // consola DEBUG/API in fereastra noua
+  setView(b.dataset.view);});
 // paleta din simulator: doar Adaugă/Șterge AC
 $('simtools').addEventListener('click',e=>{
   const t=e.target.closest('.tool');if(!t)return;
@@ -2132,6 +2135,12 @@ async function refreshPlans(){
       const o=document.createElement('option');o.value=p.id;o.textContent=p.name;sel.appendChild(o);
     }
     sel.value=cur;
+  }
+  // deep-link din consola DEBUG/API: /?plan=<id> incarca planul direct in simulator
+  const wanted=new URLSearchParams(location.search).get('plan');
+  if(wanted&&!refreshPlans.deepLinked&&plans.some(p=>String(p.id)===wanted)){
+    refreshPlans.deepLinked=true;                 // o singura data, nu la fiecare refresh
+    $('aptSelect').value=wanted; $('aptSelect').dispatchEvent(new Event('change'));
   }
 }
 

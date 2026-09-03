@@ -51,8 +51,18 @@ Planurile sunt stocate în SQLite (`data/plans.db`). Endpoints:
 | `POST` | `/api/plans` | creează un plan |
 | `PUT` | `/api/plans/:id` | actualizează un plan |
 | `DELETE` | `/api/plans/:id` | șterge un plan |
+| `GET` | `/api/plans/:id/export` | export portabil (fără poză) — JSON mic, de copiat între instanțe |
+| `POST` | `/api/plans/import` | importă un JSON de export (sau răspunsul `/debug?format=json`) |
+| `POST` | `/api/plans/import-url` | `{url}` → importă direct de la URL-ul de export al altei instanțe |
+| `GET` | `/api/openapi.json` | specificația OpenAPI 3 a API-ului |
+| `GET` | `/api/docs` | **consola DEBUG/API** (pagină): planuri + export/import + hartă ASCII + endpoint-uri |
 | `GET` | `/debug` | index text: toate planurile cu etanș DA/NU + coordonatele breșelor |
 | `GET` | `/api/plans/:id/debug` | analiză text a unui plan: hartă ASCII + breșe (`?format=json` pentru date brute) |
+
+Butonul **„🔧 API / Debug"** din meniu deschide consola `/api/docs` în fereastră
+nouă. De acolo iei „harta din producție": **Export JSON** al planului → îl
+lipești în **Import** pe altă instanță (sau dai direct URL-ul de export).
+`/?plan=<id>` deschide un plan direct în simulator.
 
 Debug: `/debug` arată rapid ce plan nu e închis ermetic și unde e gaura;
 `/api/plans/:id/debug` desenează planul ca hartă ASCII (`#` perete, `=` geam,
